@@ -42,6 +42,12 @@ The app uses a mobile layout with five tabs: **Home · Food · Train · Plan · 
 | Plan | Roadmap (projected body composition, week-by-week targets, an automatic weekly calorie check-in), Insights, and evidence-ranked Supplements. |
 | Me | Profile and goals, body measurements (waist/neck/hip → body fat %), dark/light mode, Asian BMI cut-offs, and backup export/import. |
 
+### 💪 Training structure
+- **Goal for every day:** each day is labeled Push, Pull, Legs, Upper, Cardio or Rest. A week strip at the top of Train → Today lets you jump between days.
+- **Push · Pull · Legs + Cardio plan (default):** Mon Push · Tue Pull · Wed Legs · Thu Zone-2 Cardio · Fri Upper · Sat Legs (glutes & core) · Sun Rest. Every muscle is trained twice a week. Existing users can switch from Train → Program.
+- **Library by movement, ranked best → last:** grouped into Push / Pull / Legs / Core / Cardio, then by movement (chest press, incline press, row, squat, hinge…). The **"What's free?"** filter (Barbell / Dumbbell / Machine / Cable / Bodyweight) shows only what's available.
+- **Machine busy?** Tap **⇄ Busy?** on any exercise in today's workout to swap it for the next-best option that trains the same movement. The rankings live in `js/training.js`.
+
 ### 🎧 Guided workout coach (Train → Today → *Start guided workout*)
 
 Speaks through your phone speaker or Bluetooth headset:

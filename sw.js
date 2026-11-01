@@ -1,9 +1,9 @@
 /* Service worker: makes Shred12 installable and usable offline (e.g. at the gym).
    Bump VERSION whenever app files change so phones pick up the update. */
-const VERSION = 'shred12-v6';
+const VERSION = 'shred12-v7';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/app.js', 'js/coach.js', 'js/foods.js', 'js/science.js', 'js/store.js', 'data/exercises.js',
+  'js/app.js', 'js/coach.js', 'js/foods.js', 'js/science.js', 'js/training.js', 'js/store.js', 'data/exercises.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
 ];

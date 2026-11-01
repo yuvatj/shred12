@@ -147,7 +147,7 @@ function render() {
 function go(view) { currentView = view; render(); $('#view').scrollTop = 0; }
 
 /* ---------- onboarding wizard ---------- */
-const wiz = { step: 0, d: { sex: 'male', age: 30, height: 175, weight: 80, neck: 38, waist: 90, hip: '', knownBf: '', goalBf: 15, rate: 0.7, activity: 1.55, split: 'upper_lower', diet: 'any', name: '' } };
+const wiz = { step: 0, d: { sex: 'male', age: 30, height: 175, weight: 80, neck: 38, waist: 90, hip: '', knownBf: '', goalBf: 15, rate: 0.7, activity: 1.55, split: 'ppl', diet: 'any', name: '' } };
 function renderOnboarding(el) {
   const d = wiz.d, steps = [
     { title: 'About you', body: `<div class="fields">
@@ -255,7 +255,7 @@ function renderHome(el) {
 
     <div class="card">${entryCard(ui.metric)}</div>
 
-    <div class="card"><h3>🏋 ${esc(sd.name)}<span class="spacer"></span>${ws?.done ? '<span class="pill good">✓ Done</span>' : ''}</h3>
+    <div class="card"><div class="row" style="margin-bottom:8px">${focusBadge(sd)}<span class="spacer"></span>${ws?.done ? '<span class="pill good">✓ Done</span>' : ''}</div><h3>${esc(sd.name)}</h3>
       <p class="muted" style="margin:0 0 12px;font-size:14px">${sd.rest ? 'Recovery day — walk, stretch, sleep well.' : sd.cardio ? 'Cardio day — easy pace you can talk at.' : `${sd.ex.length} exercises · ${PROGRAM.phaseFor(wk).sets} sets × ${PROGRAM.phaseFor(wk).reps}`}</p>
       <div class="row"><button class="primary" style="flex:1" data-go="train">${sd.rest ? 'View plan' : ws?.done ? 'View workout' : 'Start workout'}</button>
       <input type="number" inputmode="numeric" id="stepsInput" value="${S.steps[day] || ''}" placeholder="Steps" style="width:110px"></div>
@@ -537,8 +537,28 @@ function openGrocery() {
   openModal(`<h3>🛒 Grocery list — 7 days</h3>${Object.entries(g).sort((a, b) => b[1] - a[1]).map(([id, q]) => `<label class="check list-item"><input type="checkbox"><span class="grow">${esc(fb[id].name.split(' (')[0])}</span><b>${q >= 1000 ? (q / 1000).toFixed(1) + ' kg' : r0(q) + ' g'}</b></label>`).join('')}`);
 }
 
-/* ---------- TRAIN (unchanged flow, mobile layout) ---------- */
-let libFilter = { q: '', muscle: '', equipment: '' };
+/* ---------- TRAIN ---------- */
+let libFilter = { q: '', group: null, equip: '' };
+const focusOf = sd => FOCUS[sd.focus || (sd.rest ? 'rest' : sd.cardio ? 'cardio' : 'full')];
+function focusBadge(sd, big = false) {
+  const f = focusOf(sd);
+  return `<span class="focus-badge ${big ? 'big' : ''}" style="--fc:${f.color}">${f.emoji} ${f.label}</span>`;
+}
+/* One ranked exercise row: rank number, thumbnail, name, equipment. */
+function rankRow(id, rank, attrs = '') {
+  const e = EX[id]; if (!e) return '';
+  return `<div class="rank-row" data-id="${id}" ${attrs}><span class="rank ${rank === 1 ? 'r1' : ''}">${rank ?? '·'}</span>
+    <img src="${exImg(e)}" loading="lazy" alt="" onerror="this.style.visibility='hidden'">
+    <div class="grow"><b>${esc(e.name)}</b><small>${esc(EQUIP[Training.equipKey(e)].l)} · ${esc(e.level)}</small></div>
+    ${rank === 1 ? '<span class="pill good">Best</span>' : ''}</div>`;
+}
+function weekStrip() {
+  const d0 = parse(day), monday = addDays(day, -((d0.getDay() + 6) % 7));
+  return `<div class="week-strip">${Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(monday, i), sd = scheduledDay(d), f = focusOf(sd), done = S.workouts[d]?.done;
+    return `<button data-wday="${d}" class="${d === day ? 'active' : ''}" style="--fc:${f.color}"><small>${parse(d).toLocaleDateString(undefined, { weekday: 'narrow' })}</small><span>${done ? '✅' : f.emoji}</span><small>${f.label.split(' ')[0]}</small></button>`;
+  }).join('')}</div>`;
+}
 function renderTrain(el) {
   el.innerHTML = `<div class="stack">${seg('train', [['today', 'Today'], ['program', 'Program'], ['library', 'Library'], ['progress', 'Progress']], ui.trainTab)}<div id="wBody" class="stack"></div></div>`;
   bindSeg(el, 'train', v => { ui.trainTab = v; render(); });
@@ -560,8 +580,11 @@ function ensureSession() {
 function wToday(el) {
   const sd = scheduledDay(day), ph = PROGRAM.phaseFor(planWeek(day)), s = ensureSession();
   const doneSets = s.exercises.reduce((t, e) => t + e.sets.filter(x => x.done).length, 0), allSets = s.exercises.reduce((t, e) => t + e.sets.length, 0);
-  el.innerHTML = `
-  <div class="card hero"><h3>${esc(s.name)}</h3>
+  const f = focusOf(sd);
+  el.innerHTML = `${weekStrip()}
+  <div class="card hero" style="background:radial-gradient(circle at 95% 0%, ${f.color}40, transparent 60%), var(--card)">
+    <div class="row">${focusBadge(sd, true)}<span class="spacer"></span><small>${dayLabel()}</small></div>
+    <h3 style="margin:12px 0 2px">${esc(s.name)}</h3><small style="display:block;margin-bottom:6px"><b style="color:var(--text)">Goal:</b> ${f.muscles}</small>
     <small>${ph.name} phase · ${ph.sets} × ${ph.reps} reps @ RPE ${ph.rpe} · rest 1.5–3 min</small>
     ${allSets ? `<div class="bar" style="margin:12px 0 4px"><div style="width:${(doneSets / allSets) * 100}%;background:var(--accent)"></div></div><small>${doneSets}/${allSets} sets done</small>` : ''}
     <p class="callout" style="margin:12px 0 0">Hit the top of the rep range on every set? Add 2.5 kg (upper) or 5 kg (lower) next time. Weights pre-fill from last session.</p></div>
@@ -574,7 +597,7 @@ function wToday(el) {
   ${s.exercises.map((e, ei) => { const ex = EX[e.id]; return `<div class="session-ex"><header>
     ${ex?.images?.[0] ? `<img src="${exImg(ex)}" loading="lazy" alt="">` : ''}
     <div style="flex:1;min-width:0"><b data-exinfo="${e.id}" style="cursor:pointer">${esc(ex?.name || e.id)}</b><br><small>${esc((ex?.primaryMuscles || []).join(', '))}</small></div>
-    <button class="sm" data-swap="${ei}" aria-label="Swap">⇄</button><button class="sm ghost danger" data-rmex="${ei}" aria-label="Remove">✕</button></header>
+    <button class="sm" data-swap="${ei}" aria-label="Machine busy? Swap">⇄ Busy?</button><button class="sm ghost danger" data-rmex="${ei}" aria-label="Remove">✕</button></header>
     <div class="set-row"><small>Set</small><small style="text-align:center">kg</small><small style="text-align:center">reps</small><small></small></div>
     ${e.sets.map((x, si) => `<div class="set-row"><b style="text-align:center">${si + 1}</b><input type="number" inputmode="decimal" step="0.5" value="${x.kg}" data-ei="${ei}" data-si="${si}" data-k="kg"><input type="number" inputmode="numeric" value="${x.reps}" placeholder="${ph.reps}" data-ei="${ei}" data-si="${si}" data-k="reps"><button class="sm done-btn ${x.done ? 'on' : ''}" data-done="${ei}:${si}">✓</button></div>`).join('')}
     <button class="sm ghost" data-addset="${ei}">＋ Add set</button></div>`; }).join('')}
@@ -589,11 +612,14 @@ function wToday(el) {
   $$('[data-addset]', el).forEach(b => b.onclick = () => { const sets = s.exercises[b.dataset.addset].sets; sets.push({ ...sets[sets.length - 1], reps: '', done: false }); persist(); render(); });
   $$('[data-rmex]', el).forEach(b => b.onclick = () => { s.exercises.splice(+b.dataset.rmex, 1); persist(); render(); });
   $$('[data-swap]', el).forEach(b => b.onclick = () => {
-    const cur = EX[s.exercises[b.dataset.swap].id], m = cur?.primaryMuscles?.[0];
-    const alts = EXERCISE_DB.filter(x => x.primaryMuscles.includes(m) && x.id !== cur.id && x.category === 'strength').slice(0, 30);
-    openModal(`<h3>Swap ${esc(cur.name)}</h3><div class="ex-grid">${alts.map(a => exCard(a, `data-pickswap="${a.id}"`)).join('')}</div>`);
-    $$('[data-pickswap]').forEach(c => c.onclick = () => { s.exercises[b.dataset.swap].id = c.dataset.pickswap; persist(); closeModal(); render(); });
+    const curId = s.exercises[b.dataset.swap].id, cur = EX[curId], pat = Training.patternOf(curId);
+    const alts = Training.alternatives(curId);
+    openModal(`<h3>Machine busy? Swap ${esc(cur.name)}</h3>
+      <p class="muted" style="margin:-6px 0 10px;font-size:13px">Same movement${pat ? ` (<b>${esc(pat.name)}</b> — ${esc(pat.muscles)})` : ''}, ranked best → last. Pick the highest one that's free.</p>
+      ${alts.map(id => rankRow(id, Training.rankOf(id), `data-pickswap="${id}"`)).join('')}`);
+    $$('[data-pickswap]').forEach(c => c.onclick = () => { s.exercises[b.dataset.swap].id = c.dataset.pickswap; persist(); closeModal(); toast(`Swapped to ${EX[c.dataset.pickswap].name}`); render(); });
   });
+  $$('[data-wday]', el).forEach(b => b.onclick = () => { day = b.dataset.wday; render(); });
   $$('[data-exinfo]', el).forEach(a => a.onclick = () => showExercise(a.dataset.exinfo));
   $$('.ex-card[data-id]', el).forEach(c => c.onclick = () => showExercise(c.dataset.id));
   $('#cardioMin').onchange = e => { s.cardioMin = +e.target.value || 0; persist(); };
@@ -606,11 +632,14 @@ function exCard(e, attrs = '') {
 }
 function showExercise(id) {
   const e = EX[id]; if (!e) return;
-  openModal(`<h3>${esc(e.name)}</h3><div class="row wrap">${[e.level, e.equipment, e.mechanic].filter(Boolean).map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>
+  const pat = Training.patternOf(id), rank = Training.rankOf(id), alts = Training.alternatives(id, 3);
+  openModal(`<h3>${esc(e.name)}</h3><div class="row wrap">${pat ? `<span class="pill good">${rank ? `#${rank} of ${pat.ids.length} · ` : ''}${esc(pat.name)}</span>` : ''}${[EQUIP[Training.equipKey(e)].l, e.level, e.mechanic].filter(Boolean).map(x => `<span class="pill">${esc(x)}</span>`).join('')}</div>
     <div class="ex-imgs">${e.images.slice(0, 2).map((_, i) => `<img src="${exImg(e, i)}" alt="">`).join('')}</div>
     <p style="font-size:14px"><b>Works:</b> ${esc(e.primaryMuscles.join(', '))}${e.secondaryMuscles.length ? ` · <span class="muted">${esc(e.secondaryMuscles.join(', '))}</span>` : ''}</p>
     <ol class="tight">${e.instructions.map(i => `<li>${esc(i)}</li>`).join('')}</ol>
+    ${alts.length ? `<p class="section-title" style="margin:14px 0 4px">Busy? Do this instead</p>${alts.map(a => rankRow(a, Training.rankOf(a), 'data-alt="1"')).join('')}` : ''}
     <button class="primary block" id="addToSession" style="margin-top:12px">＋ Add to ${dayLabel().toLowerCase()}'s workout</button>`);
+  $$('#modalBody [data-alt]').forEach(r => r.onclick = () => showExercise(r.dataset.id));
   $('#addToSession').onclick = () => {
     const s = ensureSession(), ph = PROGRAM.phaseFor(planWeek(day)), prev = lastSetsFor(id, day);
     s.exercises.push({ id, sets: Array.from({ length: ph.sets }, (_, i) => ({ kg: prev?.[i]?.kg ?? '', reps: '', done: false })) });
@@ -622,28 +651,50 @@ function wProgram(el) {
   el.innerHTML = `
   <div class="chips">${PROGRAM.phases.map(ph => `<button class="${ph.weeks.includes(wk) ? 'active' : ''}" data-ph="${ph.name}">${ph.name} · W${ph.weeks[0]}${ph.weeks.length > 1 ? '–' + ph.weeks[ph.weeks.length - 1] : ''}</button>`).join('')}</div>
   <div class="card" id="phaseInfo"></div>
+  ${P().split !== 'ppl' ? `<div class="card coach-cta"><b>💪 Try Push · Pull · Legs</b><p class="muted" style="margin:6px 0 10px;font-size:13px">Each day has one clear goal: Push, Pull, Legs, Cardio, Upper, Legs, Rest. Every muscle is trained twice a week.</p>
+    <button class="primary block" id="usePpl">Switch to Push · Pull · Legs</button></div>` : ''}
   <div class="card"><h3>${sp.name}</h3>
     ${[1, 2, 3, 4, 5, 6, 0].map(i => { const d = sp.days.find(x => x.dow === i); return `<div class="day-row"><div class="day-badge ${i === dow ? 'on' : ''}">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}</div>
-      <div style="flex:1;min-width:0"><b style="font-size:14px">${esc(d.name)}</b><br><small>${d.ex.map(id => EX[id]?.name || id).join(' · ') || 'Walk 8–10k steps'}</small></div></div>`; }).join('')}
+      <div style="flex:1;min-width:0">${focusBadge(d)} <b style="font-size:14px">${esc(d.name)}</b><br><small>${d.ex.map(id => EX[id]?.name || id).join(' · ') || 'Walk 8–10k steps'}</small></div></div>`; }).join('')}
     <p class="cite" style="margin-top:10px">Change the plan in Me → Edit profile. Why it works: ≥10 hard sets per muscle per week keeps muscle while you diet. ${refLink('volume')}</p></div>`;
+  const up = $('#usePpl'); if (up) up.onclick = () => {
+    P().split = 'ppl';
+    // Drop untouched future sessions so they rebuild from the new plan.
+    Object.keys(S.workouts).forEach(d => { const w = S.workouts[d]; if (d >= today() && !w.done && !w.exercises.some(e => e.sets.some(x => x.done))) delete S.workouts[d]; });
+    save(); toast('Switched to Push · Pull · Legs'); render();
+  };
   const showPh = name => { const ph = PROGRAM.phases.find(p => p.name === name); $('#phaseInfo').innerHTML = `<h3>${ph.name}<span class="spacer"></span><span class="pill">${ph.sets} × ${ph.reps} @ RPE ${ph.rpe}</span></h3><p class="muted" style="margin:0;font-size:14px">${ph.note}</p>`; $$('[data-ph]', el).forEach(b => b.classList.toggle('active', b.dataset.ph === name)); };
   $$('[data-ph]', el).forEach(b => b.onclick = () => showPh(b.dataset.ph));
   showPh(PROGRAM.phaseFor(wk).name);
 }
 function wLibrary(el) {
-  const uniq = k => [...new Set(EXERCISE_DB.flatMap(e => [].concat(e[k] || [])))].filter(Boolean).sort();
-  el.innerHTML = `<input id="lq" value="${esc(libFilter.q)}" placeholder="🔍 Search ${EXERCISE_DB.length} exercises">
-    <div class="chips"><button data-mus="" class="${!libFilter.muscle ? 'active' : ''}">All</button>${uniq('primaryMuscles').map(m => `<button data-mus="${m}" class="${libFilter.muscle === m ? 'active' : ''}" style="text-transform:capitalize">${m}</button>`).join('')}</div>
-    <select id="le"><option value="">Any equipment</option>${uniq('equipment').map(m => `<option ${libFilter.equipment === m ? 'selected' : ''}>${m}</option>`).join('')}</select>
-    <div id="lres" class="ex-grid"></div><p class="cite">Exercise data & images: ${refLink('exdb')}</p>`;
+  const todayFocus = focusOf(scheduledDay(day));
+  libFilter.group ||= todayFocus.group;
+  const inSession = new Set((S.workouts[day]?.exercises || scheduledDay(day).ex.map(id => ({ id }))).map(e => e.id));
+  el.innerHTML = `<input id="lq" value="${esc(libFilter.q)}" placeholder="🔍 Search all ${EXERCISE_DB.length} exercises">
+    <div class="seg" id="lgroups">${GROUPS.map(([k, l]) => `<button data-grp="${k}" class="${libFilter.group === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+    <div class="chips"><span class="muted" style="font-size:12px;align-self:center;flex-shrink:0">What's free?</span><button data-eq="" class="${!libFilter.equip ? 'active' : ''}">Any</button>${Object.entries(EQUIP).map(([k, v]) => `<button data-eq="${k}" class="${libFilter.equip === k ? 'active' : ''}">${v.l}</button>`).join('')}</div>
+    <div id="lres" class="stack"></div><p class="cite">Ranked best → last within each movement: free-weight compounds first, then machines & cables, then bodyweight. Exercise data & images: ${refLink('exdb')}</p>`;
   const apply = () => {
-    libFilter.q = $('#lq').value.toLowerCase(); libFilter.equipment = $('#le').value;
-    const list = EXERCISE_DB.filter(e => (!libFilter.q || e.name.toLowerCase().includes(libFilter.q)) && (!libFilter.muscle || e.primaryMuscles.includes(libFilter.muscle)) && (!libFilter.equipment || e.equipment === libFilter.equipment));
-    $('#lres').innerHTML = (list.slice(0, 40).map(e => exCard(e)).join('') + (list.length > 40 ? `<div class="empty" style="grid-column:1/-1">+${list.length - 40} more — search to narrow down</div>` : '')) || '<div class="empty" style="grid-column:1/-1">No exercises match</div>';
-    $$('#lres .ex-card').forEach(c => c.onclick = () => showExercise(c.dataset.id));
+    libFilter.q = $('#lq').value.toLowerCase().trim();
+    const eqOk = id => !libFilter.equip || Training.equipKey(EX[id]) === libFilter.equip;
+    let html;
+    if (libFilter.q) {
+      const list = EXERCISE_DB.filter(e => e.name.toLowerCase().includes(libFilter.q) && eqOk(e.id));
+      html = list.length ? `<div class="card">${list.slice(0, 40).map(e => rankRow(e.id, Training.rankOf(e.id))).join('')}${list.length > 40 ? `<div class="empty">+${list.length - 40} more — keep typing</div>` : ''}</div>` : '<div class="empty">No exercises match</div>';
+    } else {
+      html = MOVES[libFilter.group].map(p => {
+        const rows = p.ids.map((id, i) => [id, i + 1]).filter(([id]) => EX[id] && eqOk(id));
+        return `<div class="card"><h3 style="margin-bottom:2px">${esc(p.name)}</h3><small>${esc(p.muscles)}</small>
+          <div style="margin-top:6px">${rows.length ? rows.map(([id, r]) => rankRow(id, r, inSession.has(id) ? 'data-today="1"' : '')).join('') : `<div class="empty" style="padding:12px">No ${EQUIP[libFilter.equip].l.toLowerCase()} option for this movement</div>`}</div></div>`;
+      }).join('');
+    }
+    $('#lres').innerHTML = html;
+    $$('#lres .rank-row').forEach(c => c.onclick = () => showExercise(c.dataset.id));
   };
-  $$('[data-mus]', el).forEach(b => b.onclick = () => { libFilter.muscle = b.dataset.mus; $$('[data-mus]', el).forEach(x => x.classList.toggle('active', x === b)); apply(); });
-  $('#lq').oninput = apply; $('#le').onchange = apply; apply();
+  $$('[data-grp]', el).forEach(b => b.onclick = () => { libFilter.group = b.dataset.grp; $('#lq').value = ''; $$('[data-grp]', el).forEach(x => x.classList.toggle('active', x === b)); apply(); });
+  $$('[data-eq]', el).forEach(b => b.onclick = () => { libFilter.equip = b.dataset.eq; $$('[data-eq]', el).forEach(x => x.classList.toggle('active', x === b)); apply(); });
+  $('#lq').oninput = apply; apply();
 }
 function wProgress(el) {
   const sessions = Object.entries(S.workouts).filter(([, s]) => s.exercises?.length || s.cardioMin).sort((a, b) => b[0].localeCompare(a[0]));
