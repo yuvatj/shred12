@@ -1,9 +1,9 @@
 /* Service worker: makes Shred12 installable and usable offline (e.g. at the gym).
    Bump VERSION whenever app files change so phones pick up the update. */
-const VERSION = 'shred12-v4';
+const VERSION = 'shred12-v6';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
-  'js/app.js', 'js/foods.js', 'js/science.js', 'js/store.js', 'data/exercises.js',
+  'js/app.js', 'js/coach.js', 'js/foods.js', 'js/science.js', 'js/store.js', 'data/exercises.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon.png',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
 ];
@@ -38,12 +38,19 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App files: serve from cache instantly, refresh in the background (stale-while-revalidate).
-  if (url.origin === location.origin || url.hostname === 'cdn.jsdelivr.net') {
+  // Pinned CDN library never changes: cache-first.
+  if (url.hostname === 'cdn.jsdelivr.net') {
+    e.respondWith(caches.open(VERSION).then(async c => (await c.match(req)) || fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; })));
+    return;
+  }
+
+  // App files: network-first so updates show immediately; cached copy when offline or slow (>3 s).
+  if (url.origin === location.origin) {
     e.respondWith(caches.open(VERSION).then(async c => {
-      const hit = await c.match(req, { ignoreSearch: true }) || (req.mode === 'navigate' ? await c.match('index.html') : null);
-      const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
-      return hit || (await net) || (req.mode === 'navigate' ? c.match('index.html') : Response.error());
+      const cached = () => c.match(req, { ignoreSearch: true }).then(hit => hit || (req.mode === 'navigate' ? c.match('index.html') : Response.error()));
+      const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; });
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('slow')), 3000));
+      try { return await Promise.race([net, timeout]); } catch { return cached(); }
     }));
   }
 });

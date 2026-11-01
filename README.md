@@ -42,6 +42,19 @@ The app uses a mobile layout with five tabs: **Home · Food · Train · Plan · 
 | Plan | Roadmap (projected body composition, week-by-week targets, an automatic weekly calorie check-in), Insights, and evidence-ranked Supplements. |
 | Me | Profile and goals, body measurements (waist/neck/hip → body fat %), dark/light mode, Asian BMI cut-offs, and backup export/import. |
 
+### 🎧 Guided workout coach (Train → Today → *Start guided workout*)
+
+Speaks through your phone speaker or Bluetooth headset:
+- **Strength:** it announces the exercise, set, weight and rep range, then counts down 3-2-1.
+  - It counts reps on a tempo (2–5 s per rep), or you tap to count.
+  - It pushes you on the last reps ("Two more. Dig in!", "Last one! Push, squeeze it!") and tells you when you beat last session.
+  - Between sets it runs a rest timer with 30 s and 10 s warnings and says what's next.
+- **Cardio:** Zone 2 sessions get heart-rate zone cues every 5 minutes. Interval days run 8 × 30 s hard / 90 s easy with countdown beeps.
+- **Heart rate (Android Chrome):** connect a watch or strap that broadcasts heart rate over Bluetooth (Polar, Garmin "Broadcast HR", Coros, Wahoo, many Amazfit). Rest is extended if your heart rate hasn't recovered below 65% of max, and the workout saves average and max heart rate.
+- The screen stays on during a session. Settings (⚙) cover voice, auto-count, tempo, rest length and encouragement.
+
+The coach is rule-based for now. The cue functions in `js/coach.js` (`repCue`, rest and cardio cues) are where an AI coach can plug in later.
+
 **Ideal lines:** weight follows your 12-week plan curve, BMI is that curve converted to BMI, water is 35 ml/kg (+0.5 L on training days), and calories are your daily target.
 
 ## Science used

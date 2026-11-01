@@ -215,3 +215,30 @@ ul.tight { margin: 6px 0; padding-left: 18px; line-height: 1.6; font-size: 14px;
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
 th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+
+/* ---------- guided coach (full-screen) ---------- */
+.coach { position: absolute; inset: 0; z-index: 45; background: radial-gradient(circle at 50% 0%, rgba(34,211,166,.14), transparent 60%), var(--bg); display: flex; flex-direction: column; padding: 14px 18px calc(18px + env(safe-area-inset-bottom)); animation: up .25s ease; }
+.coach-top { display: flex; align-items: center; gap: 8px; }
+.coach-title { flex: 1; text-align: center; min-width: 0; }
+.coach-title b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hr-chip { border-radius: 99px; white-space: nowrap; }
+.hr-chip.on { color: var(--bad); border-color: rgba(248,113,113,.5); }
+.coach-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; min-height: 0; }
+.coach-body.tap { cursor: pointer; user-select: none; }
+.coach-img { width: 100%; max-width: 300px; max-height: 190px; object-fit: cover; border-radius: 20px; background: #fff; }
+.coach-big { font-size: 44px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.coach-big small { font-size: 18px; font-weight: 600; color: var(--muted); }
+.coach-big.huge { font-size: 76px; }
+.coach-sub { color: var(--muted); font-size: 15px; }
+.coach-kg { display: grid; grid-template-columns: 72px 1fr 72px; gap: 8px; width: 100%; max-width: 300px; }
+.coach-kg input { text-align: center; font-size: 24px; font-weight: 800; }
+.coach-ring { position: relative; width: min(260px, 70vw); aspect-ratio: 1; }
+.coach-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.coach-ring circle { fill: none; stroke-width: 12; }
+.coach-ring .track { stroke: var(--card2); }
+.coach-ring .prog { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .3s; }
+.coach-ring .prog.rest { stroke: var(--water); }
+.coach-ring-in { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.coach-actions { display: flex; flex-direction: column; gap: 8px; }
+.coach-actions button { padding: 16px; font-size: 16px; }
+.coach-cta { border-color: rgba(34,211,166,.4); }

@@ -565,6 +565,9 @@ function wToday(el) {
     <small>${ph.name} phase · ${ph.sets} × ${ph.reps} reps @ RPE ${ph.rpe} · rest 1.5–3 min</small>
     ${allSets ? `<div class="bar" style="margin:12px 0 4px"><div style="width:${(doneSets / allSets) * 100}%;background:var(--accent)"></div></div><small>${doneSets}/${allSets} sets done</small>` : ''}
     <p class="callout" style="margin:12px 0 0">Hit the top of the rep range on every set? Add 2.5 kg (upper) or 5 kg (lower) next time. Weights pre-fill from last session.</p></div>
+  ${sd.rest ? '' : `<div class="card coach-cta"><div class="row"><div style="flex:1"><b>🎧 Guided workout</b><br><small>Voice coach in your headset: counts reps, pushes you on the last ones, times your rest${Coach.hr.value ? ` · ❤️ ${Coach.hr.value} bpm` : ''}.</small></div>
+    <button class="sm" id="coachSettings" aria-label="Coach settings">⚙</button></div>
+    <button class="primary block" id="coachStart" style="margin-top:12px">▶ Start guided ${sd.cardio ? 'cardio' : 'workout'}</button></div>`}
   ${sd.rest ? '<div class="card empty">🛌 Rest day — hit your steps, stretch and sleep 7–9 h.</div>' : ''}
   ${sd.cardio ? `<div class="card"><h3>Cardio</h3><p class="muted" style="margin-top:0">${sd.key === 'C2' ? 'Intervals: 5 min warm-up, 8–10 × (30 s hard / 90 s easy), 5 min cool-down.' : 'Zone 2: a pace where you can still talk in full sentences.'}</p>
     <div class="ex-grid">${sd.ex.map(id => exCard(EX[id])).join('')}</div></div>` : ''}
@@ -579,6 +582,8 @@ function wToday(el) {
   <div class="card"><label>Cardio minutes<input type="number" inputmode="numeric" id="cardioMin" value="${s.cardioMin || ''}" placeholder="0"></label></div>
   <button class="primary block" id="finish">${s.done ? '✓ Completed — tap to undo' : 'Finish workout'}</button>`;
   const persist = () => { S.workouts[day] = s; save(); };
+  const cs = $('#coachStart'); if (cs) cs.onclick = () => Coach.start();
+  const cst = $('#coachSettings'); if (cst) cst.onclick = () => Coach.settings();
   $$('[data-k]', el).forEach(i => i.onchange = () => { s.exercises[i.dataset.ei].sets[i.dataset.si][i.dataset.k] = i.value === '' ? '' : +i.value; persist(); });
   $$('[data-done]', el).forEach(b => b.onclick = () => { const [ei, si] = b.dataset.done.split(':'); const set = s.exercises[ei].sets[si]; set.done = !set.done; persist(); render(); });
   $$('[data-addset]', el).forEach(b => b.onclick = () => { const sets = s.exercises[b.dataset.addset].sets; sets.push({ ...sets[sets.length - 1], reps: '', done: false }); persist(); render(); });
