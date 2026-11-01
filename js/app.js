@@ -811,11 +811,17 @@ function renderMe(el) {
   <div class="card"><h3>Settings</h3>
     <div class="list-item"><div class="grow"><b>Dark mode</b></div><input type="checkbox" id="themeChk" ${S.theme !== 'light' ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--accent)"></div>
     <div class="list-item"><div class="grow"><b>Asian BMI cut-offs</b><small>Overweight from 23 instead of 25</small></div><input type="checkbox" id="asianChk" ${p.asianBmi ? 'checked' : ''} style="width:22px;height:22px;accent-color:var(--accent)"></div></div>
+  <div class="card"><h3>📱 App</h3>
+    <div class="list-item"><div class="grow"><b>Version</b><small id="appBuild">Checking…</small></div><span class="pill" id="appVer">—</span></div>
+    <button class="block" id="checkUpd" style="margin-top:8px">⟳ Check for updates</button>
+    <small id="updStatus" style="display:block;text-align:center;margin-top:6px"></small></div>
   <div class="card"><h3>Your data</h3><p class="muted" style="margin-top:0;font-size:13px">Stored only on this device. Export a backup regularly.</p>
     <div class="row"><button style="flex:1" id="exp">⬇ Export</button><label class="btn" style="flex:1;flex-direction:row;justify-content:center;color:var(--text)">⬆ Import<input type="file" id="imp" accept=".json" hidden></label></div>
     <button class="ghost danger block" id="reset" style="margin-top:6px">Reset everything</button></div>
   <p class="cite" style="text-align:center">Exercises: ${refLink('exdb')} · Foods: ${refLink('off')} + USDA values · Charts: Chart.js</p></div>`;
   $('#editProfile').onclick = openProfileSheet;
+  showVersion();
+  $('#checkUpd').onclick = checkForUpdates;
   const ib = $('#installBtn'); if (ib) ib.onclick = async () => { installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; render(); };
   $('#addMeasure').onclick = openMeasureSheet;
   $$('[data-del]', el).forEach(b => b.onclick = () => {
@@ -850,6 +856,60 @@ function openProfileSheet() {
     S.mealPlan = null; save(); closeModal(); toast('Profile saved'); render();
   };
 }
+
+/* ---------- version & updates ---------- */
+const verLabel = v => v ? 'v' + ((String(v).match(/v(\d+)$/) || [])[1] || v) : '—';
+const buildLabel = b => b ? parse(b).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+/* Ask the running service worker which version it is. */
+async function runningVersion() {
+  const sw = navigator.serviceWorker?.controller || (await navigator.serviceWorker?.getRegistration())?.active;
+  if (!sw) return null;
+  return new Promise(res => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = e => res(e.data);
+    sw.postMessage('version', [ch.port2]);
+    setTimeout(() => res(null), 1500);
+  });
+}
+/* Read the version that is published online right now. */
+async function publishedVersion() {
+  const txt = await (await fetch('sw.js?check=' + Date.now(), { cache: 'no-store' })).text();
+  return { version: (txt.match(/VERSION = '([^']+)'/) || [])[1], build: (txt.match(/BUILD = '([^']+)'/) || [])[1] };
+}
+async function showVersion() {
+  const v = await runningVersion();
+  if (!$('#appVer')) return;
+  $('#appVer').textContent = v ? verLabel(v.version) : 'web';
+  $('#appBuild').textContent = v ? `Updated ${buildLabel(v.build)}${isStandalone() ? ' · installed app' : ''}` : 'Offline support not active in this browser';
+}
+let updating = false;
+async function checkForUpdates() {
+  const st = $('#updStatus'), btn = $('#checkUpd');
+  if (!navigator.onLine) { st.textContent = "You're offline — connect to the internet and try again."; return; }
+  btn.disabled = true; st.textContent = 'Checking…';
+  try {
+    const [cur, pub] = await Promise.all([runningVersion(), publishedVersion()]);
+    if (!pub.version) throw new Error('no version');
+    if (cur?.version === pub.version) { st.textContent = `✓ You're on the latest version (${verLabel(pub.version)})`; btn.disabled = false; return; }
+    st.textContent = `Updating to ${verLabel(pub.version)}…`;
+    updating = true;
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (!reg) { location.reload(); return; }
+    const done = new Promise(res => { navigator.serviceWorker.addEventListener('controllerchange', res, { once: true }); setTimeout(res, 8000); });
+    await reg.update();
+    await done;
+    location.reload();
+  } catch {
+    updating = false; btn.disabled = false; st.textContent = 'Could not check right now. Try again in a minute.';
+  }
+}
+// A new version took over in the background (e.g. GitHub just published): let the user know.
+const hadController = !!navigator.serviceWorker?.controller; // false on the very first visit
+navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  if (updating || !hadController) return;
+  toast('✓ App updated to the latest version');
+  if (currentView === 'me') showVersion();
+});
 
 /* ---------- install (PWA) ---------- */
 let installPrompt = null;

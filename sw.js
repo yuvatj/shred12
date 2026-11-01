@@ -1,6 +1,7 @@
 /* Service worker: makes Shred12 installable and usable offline (e.g. at the gym).
-   Bump VERSION whenever app files change so phones pick up the update. */
-const VERSION = 'shred12-v7';
+   Bump VERSION (and BUILD) whenever app files change so phones pick up the update. */
+const VERSION = 'shred12-v9';
+const BUILD = '2026-11-02';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/coach.js', 'js/foods.js', 'js/science.js', 'js/training.js', 'js/store.js', 'data/exercises.js',
@@ -10,8 +11,14 @@ const SHELL = [
 const RUNTIME = 'shred12-runtime';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null)))));
+  // cache: 'reload' skips the browser's HTTP cache so a new version never stores stale files.
+  e.waitUntil(caches.open(VERSION).then(c => Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' })).catch(() => null)))));
   self.skipWaiting();
+});
+
+// The app asks which version is running (shown in Me → App).
+self.addEventListener('message', e => {
+  if (e.data === 'version') e.ports[0]?.postMessage({ version: VERSION, build: BUILD });
 });
 
 self.addEventListener('activate', e => {

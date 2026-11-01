@@ -21,14 +21,14 @@ Then open http://localhost:5173.
 ## Publish an update
 
 1. Edit the files.
-2. Bump `VERSION` in `sw.js` so installed phones pick up the change.
+2. In `sw.js`, bump `VERSION` (e.g. `shred12-v9` → `shred12-v10`) and set `BUILD` to today's date so installed phones pick up the change.
 3. Run:
 
 ```bash
 git commit -am "Describe the change" && git push
 ```
 
-GitHub Pages redeploys in about a minute.
+GitHub Pages redeploys in about a minute. On the phone, the update arrives the next time the app is opened online. You can also force it with **Me → App → Check for updates**, which shows the version you're running.
 
 ## Features
 
