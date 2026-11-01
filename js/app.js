@@ -955,7 +955,8 @@ function renderMe(el) {
   <div class="card"><h3>📱 App</h3>
     <div class="list-item"><div class="grow"><b>Version</b><small id="appBuild">Checking…</small></div><span class="pill" id="appVer">—</span></div>
     <button class="block" id="checkUpd" style="margin-top:8px">⟳ Check for updates</button>
-    <small id="updStatus" style="display:block;text-align:center;margin-top:6px"></small></div>
+    <small id="updStatus" style="display:block;text-align:center;margin-top:6px"></small>
+    <button class="ghost block" id="repairApp" style="font-size:13px;margin-top:2px">🛠 Something looks wrong? Repair app</button></div>
   <div class="card"><h3>Your data</h3><p class="muted" style="margin-top:0;font-size:13px">Stored only on this device. Export a backup regularly.</p>
     <div class="row"><button style="flex:1" id="exp">⬇ Export</button><label class="btn" style="flex:1;flex-direction:row;justify-content:center;color:var(--text)">⬆ Import<input type="file" id="imp" accept=".json" hidden></label></div>
     <button class="ghost danger block" id="reset" style="margin-top:6px">Reset everything</button></div>
@@ -963,6 +964,7 @@ function renderMe(el) {
   $('#editProfile').onclick = openProfileSheet;
   showVersion();
   $('#checkUpd').onclick = checkForUpdates;
+  $('#repairApp').onclick = repairApp;
   const ib = $('#installBtn'); if (ib) ib.onclick = async () => { installPrompt.prompt(); await installPrompt.userChoice; installPrompt = null; render(); };
   $('#addMeasure').onclick = openMeasureSheet;
   $$('[data-del]', el).forEach(b => b.onclick = () => {
@@ -1032,11 +1034,11 @@ async function checkForUpdates() {
     const [cur, pub] = await Promise.all([runningVersion(), publishedVersion()]);
     if (!pub.version) throw new Error('no version');
     if (cur?.version === pub.version) { st.textContent = `✓ You're on the latest version (${verLabel(pub.version)})`; btn.disabled = false; return; }
-    st.textContent = `Updating to ${verLabel(pub.version)}…`;
+    st.textContent = `Downloading ${verLabel(pub.version)}… (a few seconds)`;
     updating = true;
     const reg = await navigator.serviceWorker?.getRegistration();
     if (!reg) { location.reload(); return; }
-    const done = new Promise(res => { navigator.serviceWorker.addEventListener('controllerchange', res, { once: true }); setTimeout(res, 8000); });
+    const done = new Promise(res => { navigator.serviceWorker.addEventListener('controllerchange', res, { once: true }); setTimeout(res, 30000); });
     await reg.update();
     await done;
     location.reload();
@@ -1046,11 +1048,31 @@ async function checkForUpdates() {
 }
 // A new version took over in the background (e.g. GitHub just published): let the user know.
 const hadController = !!navigator.serviceWorker?.controller; // false on the very first visit
+/* A complete new version took over: reload once to show it — but never mid-workout or while typing. */
+let reloadPending = false;
+const safeToReload = () => !(window.Coach && Coach.active()) && $('#modal').classList.contains('hidden') && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+function applyUpdate() {
+  if (safeToReload()) { location.reload(); return; }
+  reloadPending = true; toast('Update ready — it applies when you finish');
+}
 navigator.serviceWorker?.addEventListener('controllerchange', () => {
   if (updating || !hadController) return;
-  toast('✓ App updated to the latest version');
-  if (currentView === 'me') showVersion();
+  applyUpdate();
 });
+// Retry a pending reload when it becomes safe (e.g. after closing a sheet or the coach).
+setInterval(() => { if (reloadPending && safeToReload()) location.reload(); }, 3000);
+// Ask the browser to look for a new version on launch and whenever the app comes back to the screen.
+const swCheck = () => navigator.serviceWorker?.getRegistration().then(r => r?.update()).catch(() => {});
+window.addEventListener('load', swCheck);
+/* Repair: drop the saved app files (not your data) and reload a fresh copy. */
+async function repairApp() {
+  if (!confirm('Reload a fresh copy of the app? Your data stays on this phone.')) return;
+  try {
+    for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+    for (const k of await caches.keys()) await caches.delete(k);
+  } catch { /* nothing cached */ }
+  location.reload();
+}
 
 /* ---------- install (PWA) ---------- */
 let installPrompt = null;
@@ -1079,6 +1101,7 @@ document.addEventListener('visibilitychange', () => {
   fitHeight();
   if (day === lastToday && lastToday !== today()) day = today();
   lastToday = today();
+  swCheck();
   if (P() && currentView === 'home' && !Coach.active() && $('#modal').classList.contains('hidden')) render();
 });
 applyTheme();
