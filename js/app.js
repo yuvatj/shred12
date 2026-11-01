@@ -1016,5 +1016,19 @@ $('#dayPicker').onchange = e => { if (e.target.value) { day = e.target.value; re
 $('#modalX').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+// Fit the app to the screen area that is actually visible (between status bar and navigation bar).
+const fitHeight = () => document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+fitHeight();
+window.addEventListener('resize', fitHeight);
+window.addEventListener('orientationchange', () => setTimeout(fitHeight, 300));
+// Coming back to the app later: refresh greeting/mission, and roll "today" over after midnight.
+let lastToday = today();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  fitHeight();
+  if (day === lastToday && lastToday !== today()) day = today();
+  lastToday = today();
+  if (P() && currentView === 'home' && !Coach.active() && $('#modal').classList.contains('hidden')) render();
+});
 applyTheme();
 render();

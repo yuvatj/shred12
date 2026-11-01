@@ -1,6 +1,6 @@
 /* Service worker: makes Shred12 installable and usable offline (e.g. at the gym).
    Bump VERSION (and BUILD) whenever app files change so phones pick up the update. */
-const VERSION = 'shred12-v10';
+const VERSION = 'shred12-v11';
 const BUILD = '2026-11-02';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',

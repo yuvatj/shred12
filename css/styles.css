@@ -34,19 +34,22 @@
 html, body { margin: 0; height: 100%; }
 body {
   font-family: Inter, system-ui, sans-serif; font-size: 15px; color: var(--text);
-  background: var(--outer); display: flex; justify-content: center; align-items: center;
+  background: var(--outer); display: flex; justify-content: center; align-items: flex-start; overflow: hidden;
 }
 a { color: var(--accent); }
 .muted, small { color: var(--muted); }
 small { font-size: 12px; }
 
 /* ---------- phone shell ---------- */
+/* Phone: exactly the visible screen. --app-h is set from window.innerHeight in app.js, because
+   100vh/100dvh can include the status and navigation bars on some Android phones. */
 .app {
-  width: 100%; max-width: 460px; height: 100dvh; background: var(--bg);
+  width: 100%; max-width: 460px; height: var(--app-h, 100dvh); background: var(--bg);
   display: flex; flex-direction: column; position: relative; overflow: hidden;
 }
 @media (min-width: 520px) {
-  .app { height: min(920px, calc(100dvh - 40px)); border-radius: 36px; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
+  body { align-items: center; height: 100dvh; }
+  .app { height: min(920px, calc(var(--app-h, 100dvh) - 40px)); border-radius: 36px; border: 1px solid var(--line); box-shadow: 0 30px 80px rgba(0,0,0,.45); }
 }
 .appbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 18px 18px 10px; }
 .appbar h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
