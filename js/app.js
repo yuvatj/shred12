@@ -121,7 +121,7 @@ function exImg(e, i = 0) { return e?.images?.[i] ? IMG_BASE + e.images[i] : ''; 
 
 /* ---------- router ---------- */
 const VIEWS = {
-  home: { t: () => `Hi${P().name ? ', ' + esc(P().name) : ''} 👋`, r: renderHome },
+  home: { t: () => greeting(), r: renderHome },
   food: { t: () => 'Food', r: renderFood },
   train: { t: () => 'Train', r: renderTrain },
   plan: { t: () => 'My Plan', r: renderPlan },
@@ -228,19 +228,110 @@ function tileValues(key) {
   if (key === 'water') return { v: ((S.water[day] || 0) / 1000).toFixed(1), sub: `Goal ${m.fmt(m.ideal(day))} L` };
   return { v: r0(foodTotals(day).kcal).toLocaleString(), sub: `Goal ${m.fmt(m.ideal(day))}` };
 }
+/* ---------- Today's mission: Train → Nutrients → Water → Food ---------- */
+const MET = { strength: 5, cardio: 6, intervals: 8 }; // Compendium of Physical Activities (approx.)
+function estimateBurn(date) {
+  const sd = scheduledDay(date), kg = weightAt(date).kg, ws = S.workouts[date];
+  if (sd.rest) return Math.round(0.00057 * kg * Math.max(S.steps[date] || 0, 10000));
+  if (sd.cardio) { const mins = ws?.cardioMin || +(sd.name.match(/(\d+)\s*min/) || [])[1] || 30; return Math.round((/interval/i.test(sd.name) ? MET.intervals : MET.cardio) * kg * mins / 60); }
+  return Math.round(MET.strength * kg * (ws?.cardioMin ? 1 + ws.cardioMin / 60 : 1));
+}
+const chosenSupps = () => SUPPS.filter(s => s.tier !== 'C' && (P().supps || ['creatine', 'protein', 'vitd']).includes(s.id));
+function missionSteps(date) {
+  const sd = scheduledDay(date), ws = S.workouts[date], t = targetsFor(date), ft = foodTotals(date);
+  const water = S.water[date] || 0, wt = waterTarget(date), supps = chosenSupps(), taken = S.supps[date] || {};
+  return [
+    { key: 'train', icon: focusOf(sd).emoji, label: 'Train', done: !!ws?.done || (sd.rest && (S.steps[date] || 0) >= 8000) },
+    { key: 'fuel', icon: '💊', label: 'Nutrients', done: supps.every(s => taken[s.id]) && ft.p >= t.perMealProtein },
+    { key: 'water', icon: '💧', label: 'Water', done: water >= wt },
+    { key: 'food', icon: '🍽', label: 'Food', done: ft.kcal >= t.kcal * 0.85 && ft.kcal <= t.kcal * 1.08 && ft.p >= t.protein * 0.9 },
+  ];
+}
+function missionStreak() {
+  let n = 0, d = missionSteps(day).every(s => s.done) ? day : addDays(day, -1);
+  while (n < 365 && d >= P().startDate && missionSteps(d).every(s => s.done)) { n++; d = addDays(d, -1); }
+  return n;
+}
+function greeting() {
+  const h = new Date().getHours(), name = P().name ? ', ' + esc(P().name) : '';
+  return `${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}${name}`;
+}
+function missionCard() {
+  const steps = missionSteps(day), doneN = steps.filter(s => s.done).length;
+  if (ui.missionDay !== day) { ui.missionDay = day; ui.missionPick = null; }
+  const firstOpen = steps.findIndex(s => !s.done);
+  const active = ui.missionPick ?? (firstOpen < 0 ? null : firstOpen);
+  const h = new Date().getHours(), isToday = day === today();
+  const head = `<div class="mission-head"><div><small>TODAY'S MISSION</small><div class="mission-count">${doneN}<small>/4 done</small></div></div>
+    <div class="mission-bar"><div style="width:${doneN * 25}%"></div></div></div>
+    <div class="mission-steps">${steps.map((s, i) => `<button data-mstep="${i}" class="${s.done ? 'done' : ''} ${i === active ? 'active' : ''}"><span>${s.done ? '✓' : s.icon}</span><small>${i + 1}. ${s.label}</small></button>`).join('<i></i>')}</div>`;
+  if (active == null) {
+    const streak = missionStreak();
+    return `<div class="card mission complete">${head}<div class="mission-body center"><div style="font-size:56px">🏆</div><div class="mission-title">Mission complete!</div>
+      <p class="muted">Trained, fuelled, hydrated and on target. ≈ ${estimateBurn(day)} kcal burned in training.</p>
+      ${streak > 1 ? `<span class="pill good" style="font-size:13px">🔥 ${streak}-day streak</span>` : ''}</div></div>`;
+  }
+  const s = steps[active], sd = scheduledDay(day), f = focusOf(sd), t = targetsFor(day), ft = foodTotals(day);
+  let body = '';
+  if (s.key === 'train') {
+    const ph = PROGRAM.phaseFor(planWeek(day)), burn = estimateBurn(day), ws = S.workouts[day];
+    const when = !isToday ? '' : h < 11 ? 'Morning session — the best start to a fat-loss day.' : h < 17 ? 'Get your session in this afternoon.' : 'Still time for a session tonight.';
+    body = sd.rest
+      ? `<div class="mission-kicker" style="--fc:${f.color}">${f.emoji} REST DAY</div><div class="mission-title">Walk 8–10k steps</div>
+        <p class="muted">${when ? 'Recovery day — ' : ''}easy movement burns ≈ ${burn} kcal and speeds recovery.</p>
+        <div class="bar big-bar"><div style="width:${Math.min(100, ((S.steps[day] || 0) / 10000) * 100)}%;background:${f.color}"></div></div>
+        <div class="row" style="margin-top:12px"><input type="number" inputmode="numeric" id="mSteps" value="${S.steps[day] || ''}" placeholder="Steps today" style="flex:1"><button class="primary" id="mStepsSave">Save</button></div>`
+      : `<div class="mission-kicker" style="--fc:${f.color}">${f.emoji} ${f.label.toUpperCase()} DAY</div><div class="mission-title">${esc(sd.name)}</div>
+        <p class="muted">${when} ${sd.cardio ? '' : `${sd.ex.length} exercises · ${ph.sets} × ${ph.reps}. `}</p>
+        <div class="burn"><span>🔥</span><div><b>≈ ${burn} kcal</b><small>${ws?.done ? 'burned' : 'to burn'} · goal: ${f.muscles}</small></div></div>
+        ${ws?.done ? '<p class="pill good" style="margin-top:12px">✓ Workout done — great job!</p>' : `<button class="primary block mission-cta" id="mStart">▶ Start guided ${sd.cardio ? 'cardio' : 'workout'}</button>
+        <button class="ghost block" data-go="train">Open workout & log manually</button>`}`;
+  } else if (s.key === 'fuel') {
+    const supps = chosenSupps(), taken = S.supps[day] || {};
+    body = `<div class="mission-kicker" style="--fc:var(--protein)">💊 POST-WORKOUT FUEL</div><div class="mission-title">Protein & supplements</div>
+      <p class="muted">Get ~${t.perMealProtein} g protein within 2 hours of training to protect muscle while you lose fat.</p>
+      <div class="macro-row"><span>Protein</span><div class="bar"><div style="width:${Math.min(100, (ft.p / t.perMealProtein) * 100)}%;background:var(--protein)"></div></div><span>${r0(ft.p)}/${t.perMealProtein} g</span></div>
+      <div class="supp-list">${supps.map(x => `<label class="check"><input type="checkbox" data-msupp="${x.id}" ${taken[x.id] ? 'checked' : ''}><span><b>${esc(x.name)}</b><small>${esc(x.dose.split(/;| \(| with /)[0])}</small></span></label>`).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="primary" style="flex:1" id="mShake">🥤 Log protein shake</button><button style="flex:1" id="mMeal">🍳 Log a meal</button></div>`;
+  } else if (s.key === 'water') {
+    const ml = S.water[day] || 0, wt = waterTarget(day);
+    body = `<div class="mission-kicker" style="--fc:var(--water)">💧 HYDRATE</div><div class="mission-title">${(ml / 1000).toFixed(2)} <small>/ ${(wt / 1000).toFixed(1)} L</small></div>
+      <p class="muted">${ml >= wt ? 'Goal reached!' : `${((wt - ml) / 1000).toFixed(2)} L to go${isTrainingDay(day) ? ' — includes +0.5 L for training' : ''}. Sip 500 ml with each meal.`}</p>
+      <div class="bar big-bar"><div style="width:${Math.min(100, (ml / wt) * 100)}%;background:var(--water)"></div></div>
+      <div class="quick" style="margin-top:12px">${[250, 500, 750].map(v => `<button data-water="${v}">+${v} ml</button>`).join('')}</div>
+      <button class="primary block" id="mWaterGoal" style="margin-top:8px">✓ I've reached my goal</button>`;
+  } else {
+    const left = t.kcal - ft.kcal;
+    body = `<div class="mission-kicker" style="--fc:var(--kcal)">🍽 EAT TO TARGET</div>
+      <div class="ring-wrap" style="margin:6px 0 4px">${ring(ft.kcal, t.kcal, left >= 0 ? 'var(--kcal)' : 'var(--bad)', r0(Math.abs(left)), left >= 0 ? 'kcal left' : 'over')}
+      <div style="flex:1;min-width:0">${macroBar('Protein', ft.p, t.protein, 'var(--protein)')}${macroBar('Carbs', ft.c, t.carbs, 'var(--carbs)')}${macroBar('Fat', ft.f, t.fat, 'var(--fat)')}</div></div>
+      <p class="muted" style="margin-top:4px">${left > 0 ? `${r0(left)} kcal and ${Math.max(0, r0(t.protein - ft.p))} g protein left for ${MEALS[suggestedMeal()]}.` : 'Target reached — close the kitchen 👍'}</p>
+      <div class="row"><button class="primary" style="flex:1" id="mPlan">🥗 Log meal plan</button><button style="flex:1" id="mSearch">🔍 Search food</button></div>`;
+  }
+  return `<div class="card mission" style="--mc:${s.key === 'train' ? f.color : s.key === 'fuel' ? 'var(--protein)' : s.key === 'water' ? 'var(--water)' : 'var(--kcal)'}">${head}
+    <div class="mission-body">${s.done ? '<span class="pill good" style="float:right">✓ Done</span>' : ''}${body}</div>
+    ${s.done && firstOpen >= 0 && firstOpen !== active ? `<button class="block" data-mstep="${firstOpen}" style="margin-top:10px">Next: ${steps[firstOpen].icon} ${steps[firstOpen].label} →</button>` : ''}</div>`;
+}
+function bindMission(el) {
+  $$('[data-mstep]', el).forEach(b => b.onclick = () => { ui.missionPick = +b.dataset.mstep; render(); });
+  const st = $('#mStart'); if (st) st.onclick = () => Coach.start();
+  const ss = $('#mStepsSave'); if (ss) ss.onclick = () => { S.steps[day] = +$('#mSteps').value || 0; save(); ui.missionPick = null; toast('Steps saved'); render(); };
+  $$('[data-msupp]', el).forEach(c => c.onchange = () => { S.supps[day] = { ...(S.supps[day] || {}), [c.dataset.msupp]: c.checked }; save(); render(); });
+  const sh = $('#mShake'); if (sh) sh.onclick = () => { logPlannedMeal({ recipeId: 'shake', scale: 1 }, 'snack'); ui.missionPick = null; toast('🥤 Protein shake logged'); render(); };
+  const mm = $('#mMeal'); if (mm) mm.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
+  const wg = $('#mWaterGoal'); if (wg) wg.onclick = () => { S.water[day] = Math.max(S.water[day] || 0, waterTarget(day)); save(); ui.missionPick = null; toast('Water goal reached 💧'); render(); };
+  const mp = $('#mPlan'); if (mp) mp.onclick = openPlanLogger;
+  const ms = $('#mSearch'); if (ms) ms.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
+}
+
 function renderHome(el) {
   const p = P(), bf = bfAt(day), wk = planWeek(day);
   const bfProgress = clamp(((p.startBf - bf) / (p.startBf - p.goalBf)) * 100, 0, 100);
   const m = METRICS[ui.metric], color = css(m.color);
-  const sd = scheduledDay(day), ws = S.workouts[day];
   el.innerHTML = `<div class="stack">
-    <div class="card hero">
-      <div class="row"><div><small>Body fat</small><div class="big">${r1(bf)}<small>% → ${p.goalBf}%</small></div></div><span class="spacer"></span>
-      <span class="pill ${Sci.bfCategory(p.sex, bf).c}">${Sci.bfCategory(p.sex, bf).l}</span></div>
-      <div class="bar" style="margin:12px 0 6px"><div style="width:${bfProgress}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
-      <small>${r0(bfProgress)}% to goal · ${Math.max(0, 84 - daysBetween(p.startDate, day))} days left · ${PROGRAM.phaseFor(wk).name} phase</small>
-    </div>
+    ${missionCard()}
 
+    <p class="section-title">Your progress</p>
     <div class="tiles">${Object.entries(METRICS).map(([k, x]) => { const t = tileValues(k); return `<button class="tile ${ui.metric === k ? 'active' : ''}" data-metric="${k}" style="--c:var(${x.color})">
       <span class="t-head"><span class="t-dot" style="background:var(${x.color})"></span>${x.label}</span>
       <span class="t-val">${t.v}<small> ${x.unit}</small></span><span class="t-goal">${t.sub}</span></button>`; }).join('')}</div>
@@ -255,16 +346,16 @@ function renderHome(el) {
 
     <div class="card">${entryCard(ui.metric)}</div>
 
-    <div class="card"><div class="row" style="margin-bottom:8px">${focusBadge(sd)}<span class="spacer"></span>${ws?.done ? '<span class="pill good">✓ Done</span>' : ''}</div><h3>${esc(sd.name)}</h3>
-      <p class="muted" style="margin:0 0 12px;font-size:14px">${sd.rest ? 'Recovery day — walk, stretch, sleep well.' : sd.cardio ? 'Cardio day — easy pace you can talk at.' : `${sd.ex.length} exercises · ${PROGRAM.phaseFor(wk).sets} sets × ${PROGRAM.phaseFor(wk).reps}`}</p>
-      <div class="row"><button class="primary" style="flex:1" data-go="train">${sd.rest ? 'View plan' : ws?.done ? 'View workout' : 'Start workout'}</button>
-      <input type="number" inputmode="numeric" id="stepsInput" value="${S.steps[day] || ''}" placeholder="Steps" style="width:110px"></div>
+    <div class="card">
+      <div class="row"><div><small>Body fat</small><div class="big">${r1(bf)}<small>% → ${p.goalBf}%</small></div></div><span class="spacer"></span>
+      <span class="pill ${Sci.bfCategory(p.sex, bf).c}">${Sci.bfCategory(p.sex, bf).l}</span></div>
+      <div class="bar" style="margin:12px 0 6px"><div style="width:${bfProgress}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
+      <small>${r0(bfProgress)}% to goal · ${Math.max(0, 84 - daysBetween(p.startDate, day))} days left · ${PROGRAM.phaseFor(wk).name} phase</small>
     </div>
-
-    <div class="card"><h3>💊 Today's supplements</h3>${suppChecklist()}</div>
   </div>`;
   metricChart();
   bindHome(el);
+  bindMission(el);
 }
 function metricRange() {
   if (ui.range === '12W') { const s = P().startDate; return Array.from({ length: 85 }, (_, i) => addDays(s, i)); }
@@ -337,7 +428,6 @@ function bindHome(el) {
   bindCommon(el);
   $$('[data-metric]', el).forEach(b => b.onclick = () => { ui.metric = b.dataset.metric; render(); });
   bindSeg(el, 'range', v => { ui.range = v; render(); });
-  $('#stepsInput').onchange = e => { S.steps[day] = +e.target.value || 0; save(); toast('Steps saved'); };
   // weight / bmi
   $$('[data-step]', el).forEach(b => b.onclick = () => { const i = $('#wInput'); i.value = r1(+i.value + +b.dataset.step); });
   if ($('#saveWeight')) $('#saveWeight').onclick = () => {
