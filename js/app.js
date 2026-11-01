@@ -85,7 +85,7 @@ function chart(canvasId, config) {
   const grid = css('--line');
   Chart.defaults.color = css('--muted'); Chart.defaults.font.family = 'Inter, system-ui, sans-serif'; Chart.defaults.font.size = 11;
   const base = {
-    responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, animation: { duration: 450 },
+    responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, animation: false,
     plugins: { legend: { labels: { boxWidth: 10, usePointStyle: true } } },
     scales: config.type === 'doughnut' ? {} : { x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } }, y: { grid: { color: grid }, ticks: { maxTicksLimit: 5 } } },
   };
@@ -131,7 +131,9 @@ function dayLabel() {
   const diff = daysBetween(today(), day);
   return diff === 0 ? 'Today' : diff === -1 ? 'Yesterday' : diff === 1 ? 'Tomorrow' : fmtDate(day);
 }
+let lastRenderAt = 0;
 function render() {
+  lastRenderAt = Date.now();
   destroyCharts();
   $('#dayPicker').value = day; $('#dayLabel').textContent = dayLabel();
   const onboarding = !P();
@@ -142,6 +144,7 @@ function render() {
   $('#viewTitle').innerHTML = v.t();
   $('#viewSub').textContent = wk >= 1 && wk <= 12 ? `Week ${wk} of 12 · ${PROGRAM.phaseFor(wk).name}` : wk < 1 ? 'Plan starts soon' : 'Plan complete 🎉';
   $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.view === currentView));
+  if (currentView !== 'home') delete $('#view').dataset.homeSig;
   v.r($('#view'));
 }
 function go(view) { currentView = view; render(); $('#view').scrollTop = 0; }
@@ -304,22 +307,24 @@ function slides() {
     { key: 'food', accent: ACTIVITY.food.color, deep: ACTIVITY.food.deep, img: P().diet === 'veg' ? 'food-veg' : 'food', ...food },
   ].map((s, i) => ({ ...s, i, done: steps[i].done, progress: prog[s.key] }));
 }
-function slideHTML(s) {
-  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent};--ad:${s.deep}" ${s.open ? 'data-open="1"' : ''}>
-    <div class="slide-photo" style="background-image:url(img/${s.img}.webp)">
-      <div class="slide-top"><span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
-      <div class="slide-cap"><div class="slide-title">${s.title}</div><div class="slide-sub">${s.sub}</div></div>
-    </div>
-    <div class="slide-body">
-      <div class="slide-metric">${s.metric}</div>
+const slideTop = s => `<span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}`;
+const slideCap = s => `<div class="slide-title">${s.title}</div><div class="slide-sub">${s.sub}</div>`;
+const slideBody = s => `<div class="slide-metric">${s.metric}</div>
       <div class="slide-bar"><div style="width:${Math.round(s.progress * 100)}%"></div></div>
       ${s.extra || ''}
       <div class="slide-fill"></div>
       ${s.cta}
-      <div class="slide-more">${s.more}</div>
+      <div class="slide-more">${s.more}</div>`;
+function slideHTML(s) {
+  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent};--ad:${s.deep}" ${s.open ? 'data-open="1"' : ''}>
+    <div class="slide-photo" style="background-image:url(img/${s.img}.webp)">
+      <div class="slide-top">${slideTop(s)}</div>
+      <div class="slide-cap">${slideCap(s)}</div>
     </div>
+    <div class="slide-body">${slideBody(s)}</div>
   </article>`;
 }
+const dotsHTML = ss => ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent};--ad:${s.deep}" class="${s.done ? 'done' : ''} ${i === ui.slide ? 'active' : ''}" aria-label="${s.kicker}"></button>`).join('');
 function sparkline(vals, ideal, w = 84, h = 36) {
   const all = [...vals.filter(v => v != null), ...ideal]; if (all.length < 2) return '';
   const lo = Math.min(...all) - 0.2, hi = Math.max(...all) + 0.2, n = ideal.length;
@@ -382,23 +387,39 @@ function renderHome(el) {
     if (steps[ui.slide]?.done && !(ui.doneMask[ui.slide] === '1') && firstOpen >= 0) glideTo = firstOpen;
     ui.doneMask = mask;
   }
-  el.innerHTML = `<div class="stack home">
-    <div class="deck-wrap">
-      <div class="deck" id="deck">${ss.map(slideHTML).join('')}</div>
-    </div>
-    <div class="dots" id="dots">${ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent};--ad:${s.deep}" class="${s.done ? 'done' : ''}" aria-label="${s.kicker}"></button>`).join('')}</div>
-    ${slimCards()}
-  </div>`;
-  bindHomeDeck(el, glideTo);
+  const sig = day + '|' + ss.map(s => s.img).join(',');
+  const deck = $('#deck', el);
+  if (deck && el.dataset.homeSig === sig) {
+    // Same day & photos: update text, numbers and buttons in place — photos and swipe position stay put.
+    $$('.slide', deck).forEach((node, i) => {
+      const s = ss[i];
+      node.classList.toggle('done', s.done);
+      node.style.setProperty('--ac', s.accent); node.style.setProperty('--ad', s.deep);
+      node.querySelector('.slide-top').innerHTML = slideTop(s);
+      node.querySelector('.slide-cap').innerHTML = slideCap(s);
+      node.querySelector('.slide-body').innerHTML = slideBody(s);
+    });
+    $('#dots', el).innerHTML = dotsHTML(ss);
+    $('#slims', el).innerHTML = slimCards();
+    bindHomeDeck(el, glideTo, true);
+  } else {
+    el.dataset.homeSig = sig;
+    el.innerHTML = `<div class="stack home">
+      <div class="deck-wrap"><div class="deck" id="deck">${ss.map(slideHTML).join('')}</div></div>
+      <div class="dots" id="dots">${dotsHTML(ss)}</div>
+      <div class="slims" id="slims">${slimCards()}</div>
+    </div>`;
+    bindHomeDeck(el, glideTo, false);
+  }
   bindCommon(el);
   if (ui.progressSheet) openProgressSheet();
   else if (ui.reopenWorkout || ui.workoutSheet) { const v = ui.wsView; if (typeof v === 'number' && !ui.reopenWorkout) openExerciseView(v); else openWorkoutSheet(); }
 }
-function bindHomeDeck(el, glideTo) {
+function bindHomeDeck(el, glideTo, patched) {
   const deck = $('#deck'), n = 4, width = () => deck.clientWidth + 12; // 12px = gap
   const paint = i => $$('[data-dot]', el).forEach((d, k) => d.classList.toggle('active', k === i));
   const goTo = (i, smooth = true) => { ui.slide = clamp(i, 0, n - 1); deck.scrollTo({ left: ui.slide * width(), behavior: smooth ? 'smooth' : 'auto' }); paint(ui.slide); };
-  goTo(ui.slide, false);
+  if (!patched) goTo(ui.slide, false); else paint(ui.slide);
   if (glideTo != null) setTimeout(() => { goTo(glideTo); toast(`Nice! Next: ${['Workout', 'Nutrients', 'Water', 'Food'][glideTo]}`); }, 650);
   let t; deck.onscroll = () => { clearTimeout(t); t = setTimeout(() => { ui.slide = Math.round(deck.scrollLeft / width()); paint(ui.slide); }, 80); };
   $$('[data-dot]', el).forEach(d => d.onclick = () => goTo(+d.dataset.dot));
@@ -1163,7 +1184,13 @@ $('#modalX').onclick = closeModal;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 // Fit the app to the screen area that is actually visible (between status bar and navigation bar).
-const fitHeight = () => document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
+let fitW = 0, fitH = 0;
+const fitHeight = () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (typing && w === fitW && h < fitH) return; // keyboard opened: keep the layout still
+  fitW = w; fitH = h; document.documentElement.style.setProperty('--app-h', h + 'px');
+};
 fitHeight();
 window.addEventListener('resize', fitHeight);
 window.addEventListener('orientationchange', () => setTimeout(fitHeight, 300));
@@ -1172,10 +1199,11 @@ let lastToday = today();
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   fitHeight();
-  if (day === lastToday && lastToday !== today()) day = today();
+  const rolled = day === lastToday && lastToday !== today();
+  if (rolled) day = today();
   lastToday = today();
   swCheck();
-  if (P() && currentView === 'home' && !Coach.active() && $('#modal').classList.contains('hidden')) render();
+  if (P() && currentView === 'home' && !Coach.active() && $('#modal').classList.contains('hidden') && (rolled || Date.now() - lastRenderAt > 15 * 60000)) render();
 });
 applyTheme();
 render();
