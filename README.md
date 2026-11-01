@@ -78,5 +78,6 @@ All references are linked inside the app on the **Supplements** and **12-Week Pl
 
 - Exercises: [yuhonas/free-exercise-db](https://github.com/yuhonas/free-exercise-db) (Unlicense), stored in `data/exercises.js`.
 - Packaged foods: [Open Food Facts](https://world.openfoodfacts.org/) API (ODbL), queried live.
+- Home photos: [Unsplash](https://unsplash.com/) (Unsplash License: free to use), resized to WebP in `img/` so they work offline.
 
 *This app gives general information, not medical advice. Check with a doctor before starting a diet or supplements, especially if you have a medical condition.*

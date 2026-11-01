@@ -4,13 +4,20 @@
    When a machine is busy, take the next one down the list. */
 
 window.FOCUS = {
-  push:   { label: 'Push',      emoji: '💪', color: '#f472b6', muscles: 'Chest · Shoulders · Triceps', group: 'push' },
-  pull:   { label: 'Pull',      emoji: '🧗', color: '#60a5fa', muscles: 'Back · Rear delts · Biceps', group: 'pull' },
-  legs:   { label: 'Legs',      emoji: '🦵', color: '#22d3a6', muscles: 'Quads · Hamstrings · Glutes · Calves', group: 'legs' },
-  upper:  { label: 'Upper',     emoji: '🏋', color: '#a78bfa', muscles: 'Push + Pull', group: 'push' },
-  full:   { label: 'Full body', emoji: '⚡', color: '#fbbf24', muscles: 'Push + Pull + Legs', group: 'legs' },
-  cardio: { label: 'Cardio',    emoji: '🏃', color: '#fb923c', muscles: 'Heart · Fat burn', group: 'cardio' },
-  rest:   { label: 'Rest',      emoji: '🛌', color: '#8b97ad', muscles: 'Recover · 8–10k steps', group: 'push' },
+  // color = bright tone (text, rings), deep = rich tone (gradients, buttons)
+  push:   { label: 'Push',      emoji: '💪', color: '#fb7185', deep: '#e11d48', muscles: 'Chest · Shoulders · Triceps', group: 'push', img: 'push' },
+  pull:   { label: 'Pull',      emoji: '🧗', color: '#818cf8', deep: '#4f46e5', muscles: 'Back · Rear delts · Biceps', group: 'pull', img: 'pull' },
+  legs:   { label: 'Legs',      emoji: '🦵', color: '#34d399', deep: '#059669', muscles: 'Quads · Hamstrings · Glutes · Calves', group: 'legs', img: 'legs' },
+  upper:  { label: 'Upper',     emoji: '🏋', color: '#c084fc', deep: '#7c3aed', muscles: 'Push + Pull', group: 'push', img: 'upper' },
+  full:   { label: 'Full body', emoji: '⚡', color: '#fbbf24', deep: '#d97706', muscles: 'Push + Pull + Legs', group: 'legs', img: 'full' },
+  cardio: { label: 'Cardio',    emoji: '🏃', color: '#fb923c', deep: '#ea580c', muscles: 'Heart · Fat burn', group: 'cardio', img: 'cardio' },
+  rest:   { label: 'Rest',      emoji: '🛌', color: '#5eead4', deep: '#0d9488', muscles: 'Recover · 8–10k steps', group: 'push', img: 'rest' },
+};
+/* Daily activity colours (Home cards). Photos: Unsplash (Unsplash License), bundled in img/. */
+window.ACTIVITY = {
+  fuel:  { color: '#f0abfc', deep: '#c026d3' },
+  water: { color: '#7dd3fc', deep: '#0284c7' },
+  food:  { color: '#fcd34d', deep: '#d97706' },
 };
 
 window.MOVES = {

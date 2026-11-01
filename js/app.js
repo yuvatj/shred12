@@ -296,23 +296,28 @@ function slides() {
   const food = { icon: '🍽', kicker: 'FOOD', title: left >= 0 ? 'Eat to target' : 'Over target', sub: left > 0 ? `${Math.max(0, r0(t.protein - ft.p))} g protein left · next: ${MEALS[suggestedMeal()]}` : 'Kitchen closed for today 👍',
     metric: `<b>${r0(Math.abs(left)).toLocaleString()}</b> kcal ${left >= 0 ? 'left' : 'over'} · ${r0(ft.kcal).toLocaleString()}/${t.kcal.toLocaleString()}`,
     cta: '<button class="slide-cta" id="sPlan">🥗 Log my meal plan</button>', more: '<button class="slide-link" id="sSearch">🔍 Search food</button><button class="slide-link" data-go="food">Food log</button>' };
+  const trainImg = sd.rest ? 'rest' : sd.cardio ? (/interval/i.test(sd.name) ? 'intervals' : 'cardio') : f.img;
   return [
-    { key: 'train', accent: f.color, ...train }, { key: 'fuel', accent: '#f472b6', ...fuel },
-    { key: 'water', accent: '#38bdf8', ...water }, { key: 'food', accent: '#fb923c', ...food },
+    { key: 'train', accent: f.color, deep: f.deep, img: trainImg, ...train },
+    { key: 'fuel', accent: ACTIVITY.fuel.color, deep: ACTIVITY.fuel.deep, img: 'fuel', ...fuel },
+    { key: 'water', accent: ACTIVITY.water.color, deep: ACTIVITY.water.deep, img: 'water', ...water },
+    { key: 'food', accent: ACTIVITY.food.color, deep: ACTIVITY.food.deep, img: P().diet === 'veg' ? 'food-veg' : 'food', ...food },
   ].map((s, i) => ({ ...s, i, done: steps[i].done, progress: prog[s.key] }));
 }
 function slideHTML(s) {
-  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent}">
-    <div class="slide-top"><span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
-    <div class="slide-icon">${s.icon}</div>
-    <div class="slide-title">${s.title}</div>
-    <div class="slide-sub">${s.sub}</div>
-    <div class="slide-metric">${s.metric}</div>
-    <div class="slide-bar"><div style="width:${Math.round(s.progress * 100)}%"></div></div>
-    ${s.extra || ''}
-    <div class="slide-fill"></div>
-    ${s.cta}
-    <div class="slide-more">${s.more}</div>
+  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent};--ad:${s.deep}">
+    <div class="slide-photo" style="background-image:url(img/${s.img}.webp)">
+      <div class="slide-top"><span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
+      <div class="slide-cap"><div class="slide-title">${s.title}</div><div class="slide-sub">${s.sub}</div></div>
+    </div>
+    <div class="slide-body">
+      <div class="slide-metric">${s.metric}</div>
+      <div class="slide-bar"><div style="width:${Math.round(s.progress * 100)}%"></div></div>
+      ${s.extra || ''}
+      <div class="slide-fill"></div>
+      ${s.cta}
+      <div class="slide-more">${s.more}</div>
+    </div>
   </article>`;
 }
 function sparkline(vals, ideal, w = 84, h = 36) {
@@ -326,7 +331,7 @@ function sparkline(vals, ideal, w = 84, h = 36) {
 function slimCards() {
   const steps = missionSteps(day), prog = activityProgress(day), doneN = steps.filter(s => s.done).length;
   const score = Math.round((prog.train + prog.fuel + prog.water + prog.food) * 25), streak = missionStreak();
-  const colors = [focusOf(scheduledDay(day)).color, '#f472b6', '#38bdf8', '#fb923c'];
+  const colors = [focusOf(scheduledDay(day)).color, ACTIVITY.fuel.color, ACTIVITY.water.color, ACTIVITY.food.color];
   const ds = lastDays(14), w = weightAt(day).kg, ideal = idealWeight(day), diff = w - ideal;
   const status = Math.abs(diff) < 0.3 ? 'On track' : diff > 0 ? `${r1(diff)} kg above ideal` : `${r1(-diff)} kg ahead of plan`;
   return `<button class="slim" id="slimToday">
@@ -382,7 +387,7 @@ function renderHome(el) {
       <div class="deck" id="deck">${ss.map(slideHTML).join('')}</div>
       <button class="deck-arrow prev" id="dPrev" aria-label="Previous">‹</button><button class="deck-arrow next" id="dNext" aria-label="Next">›</button>
     </div>
-    <div class="dots" id="dots">${ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent}" class="${s.done ? 'done' : ''}" aria-label="${s.kicker}"></button>`).join('')}</div>
+    <div class="dots" id="dots">${ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent};--ad:${s.deep}" class="${s.done ? 'done' : ''}" aria-label="${s.kicker}"></button>`).join('')}</div>
     ${slimCards()}
   </div>`;
   bindHomeDeck(el, glideTo);
@@ -969,7 +974,7 @@ function renderMe(el) {
   <div class="card"><h3>Your data</h3><p class="muted" style="margin-top:0;font-size:13px">Stored only on this device. Export a backup regularly.</p>
     <div class="row"><button style="flex:1" id="exp">⬇ Export</button><label class="btn" style="flex:1;flex-direction:row;justify-content:center;color:var(--text)">⬆ Import<input type="file" id="imp" accept=".json" hidden></label></div>
     <button class="ghost danger block" id="reset" style="margin-top:6px">Reset everything</button></div>
-  <p class="cite" style="text-align:center">Exercises: ${refLink('exdb')} · Foods: ${refLink('off')} + USDA values · Charts: Chart.js</p></div>`;
+  <p class="cite" style="text-align:center">Exercises: ${refLink('exdb')} · Foods: ${refLink('off')} + USDA values · Photos: Unsplash · Charts: Chart.js</p></div>`;
   $('#editProfile').onclick = openProfileSheet;
   showVersion();
   $('#checkUpd').onclick = checkForUpdates;
