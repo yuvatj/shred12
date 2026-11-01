@@ -15,14 +15,17 @@ const DEFAULT_STATE = {
   theme: 'dark',
 };
 
+// structuredClone is missing on older iPhones (iOS < 15.4), so copy via JSON.
+const fresh = () => JSON.parse(JSON.stringify(DEFAULT_STATE));
+
 const Store = {
   state: null,
   load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      this.state = raw ? { ...structuredClone(DEFAULT_STATE), ...JSON.parse(raw) } : structuredClone(DEFAULT_STATE);
+      this.state = raw ? { ...fresh(), ...JSON.parse(raw) } : fresh();
     } catch {
-      this.state = structuredClone(DEFAULT_STATE);
+      this.state = fresh();
     }
     return this.state;
   },
@@ -31,5 +34,5 @@ const Store = {
   },
   reset() { localStorage.removeItem(STORE_KEY); this.load(); },
   export() { return JSON.stringify(this.state, null, 2); },
-  import(json) { this.state = { ...structuredClone(DEFAULT_STATE), ...JSON.parse(json) }; this.save(); },
+  import(json) { this.state = { ...fresh(), ...JSON.parse(json) }; this.save(); },
 };
