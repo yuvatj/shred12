@@ -2,13 +2,33 @@
 
 A single-page fitness app with no build step and no backend. It runs in any modern browser and stores your data privately in that browser's `localStorage`.
 
-## Run
+## Use it
+
+**Live app:** https://yuvatj.github.io/shred12/. Open it on your phone and install it:
+- **iPhone (Safari):** Share ⬆ → *Add to Home Screen*
+- **Android (Chrome):** ⋮ → *Install app*
+
+Once installed, it opens full-screen and works offline. Exercise images are saved as you view them, and food search needs a connection. Your data stays on the device; use **Me → Export / Import** to back it up or move it.
+
+## Run locally
 
 ```bash
 python -m http.server 5173
 ```
 
-Then open http://localhost:5173. You can also just double-click `index.html`. Use the internet connection when you can, because Chart.js, exercise images and Open Food Facts load online.
+Then open http://localhost:5173.
+
+## Publish an update
+
+1. Edit the files.
+2. Bump `VERSION` in `sw.js` so installed phones pick up the change.
+3. Run:
+
+```bash
+git commit -am "Describe the change" && git push
+```
+
+GitHub Pages redeploys in about a minute.
 
 ## Features
 
