@@ -474,3 +474,49 @@ button.slide-link { background: none; border: none; color: var(--muted); font-si
 .slims { display: flex; flex-direction: column; gap: 10px; }
 .slide-bar > div, .thick > div, .thin > div { transition: width .35s ease-out; }
 button { touch-action: manipulation; }
+
+/* ---------- app-wide premium polish (all tabs match Home) ---------- */
+.card { border-radius: 24px; background: var(--glass), var(--card); border: 1px solid var(--edge); box-shadow: var(--lift); }
+.card.hero { background: radial-gradient(110% 80% at 100% 0%, rgba(129,140,248,.22), transparent 60%), radial-gradient(90% 70% at 0% 100%, rgba(34,211,166,.14), transparent 60%), var(--glass), var(--card); }
+.seg { background: var(--track); border: 1px solid var(--edge); border-radius: 16px; padding: 4px; }
+.seg button { font-weight: 700; color: var(--muted); }
+.seg button.active { background: var(--card); color: var(--text); box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+button.primary { background: linear-gradient(135deg, #22d3a6, #10b981); color: #03241b; box-shadow: 0 8px 18px -10px rgba(16,185,129,.8); font-weight: 800; }
+.session-ex { border-radius: 22px; background: var(--glass), var(--card); border: 1px solid var(--edge); box-shadow: var(--lift); }
+.chips button { background: var(--card); border-color: var(--edge); }
+.chips button.active { background: linear-gradient(135deg, #22d3a6, #10b981); color: #03241b; border-color: transparent; }
+.section-title { letter-spacing: .1em; font-size: 11px; }
+.list-item .grow small { font-size: 12px; }
+
+/* Food log */
+.food-head .ring-wrap { gap: 18px; }
+.food-sum { flex: 1; display: grid; gap: 8px; }
+.food-sum > div { display: flex; align-items: baseline; gap: 6px; }
+.food-sum small { font-size: 12px; min-width: 78px; }
+.food-sum b { font-size: 17px; font-weight: 800; }
+.food-sum b + small { min-width: 0; }
+.mtiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.mtile { background: var(--track); border-radius: 16px; padding: 10px 11px; }
+.mtile small { font-size: 11px; font-weight: 700; color: var(--mc); }
+.mtile b { display: block; font-size: 18px; font-weight: 800; margin: 2px 0 6px; }
+.mtile b span { font-size: 11px; font-weight: 600; color: var(--muted); }
+.meal-card { padding: 14px 16px; }
+.meal-card header { display: flex; align-items: center; gap: 12px; }
+.meal-card header .grow { flex: 1; min-width: 0; }
+.meal-card header b { display: block; font-size: 16px; }
+.meal-card header small { font-size: 12px; }
+.meal-card .list-item:first-of-type { margin-top: 6px; }
+.meal-ico { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; font-size: 21px; background: var(--track); flex-shrink: 0; }
+.round-add { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 22px; line-height: 1; border: none; color: #03241b; background: linear-gradient(135deg, #22d3a6, #10b981); box-shadow: 0 6px 14px -8px rgba(16,185,129,.9); }
+.chip-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chip-actions button { border-radius: 99px; padding: 9px 14px; font-size: 13px; background: var(--card); border: 1px solid var(--edge); }
+
+/* Train → Today hero */
+.train-hero { --ac: var(--accent); --ad: var(--accent); border-radius: 26px; overflow: hidden; background: var(--card); border: 1px solid color-mix(in srgb, var(--ac) 28%, var(--edge)); box-shadow: 0 10px 22px -14px color-mix(in srgb, var(--ad) 70%, #000); }
+.th-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.th-chips span { font-size: 12px; font-weight: 700; padding: 6px 10px; border-radius: 99px; background: var(--track); }
+.th-progress { display: block; margin-top: 6px; font-size: 12px; }
+.th-cta { margin-top: 12px; }
+.th-cta .slide-cta { flex: 1; }
+.th-gear { flex: 0 0 48px !important; width: 48px; padding: 0; border-radius: 16px; font-size: 18px; background: var(--track); border: 1px solid var(--edge); }
+.th-tip { display: block; margin-top: 10px; font-size: 12px; line-height: 1.5; }

@@ -636,16 +636,23 @@ function renderFood(el) {
 }
 function foodLog(el) {
   const t = targetsFor(day), ft = foodTotals(day), items = S.food[day] || [], left = t.kcal - ft.kcal;
+  const MEAL_ICON = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
+  const macroTile = (label, v, goal, color) => `<div class="mtile" style="--mc:${color}"><small>${label}</small><b>${r0(v)}<span>/${goal} g</span></b><div class="thin"><div style="width:${Math.min(100, (v / goal) * 100)}%;background:${color}"></div></div></div>`;
   el.innerHTML = `
-  <div class="card"><div class="ring-wrap">${ring(ft.kcal, t.kcal, left >= 0 ? 'var(--kcal)' : 'var(--bad)', r0(Math.abs(left)), left >= 0 ? 'kcal left' : 'over')}
-    <div style="flex:1;min-width:0">${macroBar('Protein', ft.p, t.protein, 'var(--protein)')}${macroBar('Carbs', ft.c, t.carbs, 'var(--carbs)')}${macroBar('Fat', ft.f, t.fat, 'var(--fat)')}
-    <small>Goal ${t.kcal} kcal · ~${t.perMealProtein} g protein per meal</small></div></div></div>
+  <section class="hcard food-head">
+    <div class="ring-wrap">${ring(ft.kcal, t.kcal, left >= 0 ? 'var(--kcal)' : 'var(--bad)', r0(Math.abs(left)).toLocaleString(), left >= 0 ? 'kcal left' : 'kcal over', 112)}
+      <div class="food-sum"><div><small>Eaten</small><b>${r0(ft.kcal).toLocaleString()}</b></div><div><small>Goal</small><b>${t.kcal.toLocaleString()}</b></div><div><small>Protein/meal</small><b>~${t.perMealProtein} g</b></div></div></div>
+    <div class="mtiles">${macroTile('Protein', ft.p, t.protein, 'var(--protein)')}${macroTile('Carbs', ft.c, t.carbs, 'var(--carbs)')}${macroTile('Fat', ft.f, t.fat, 'var(--fat)')}</div>
+  </section>
   ${MEALS.map(m => {
     const mi = items.filter(x => x.meal === m), mk = mi.reduce((s, x) => s + x.kcal, 0);
-    return `<div class="card"><h3 style="text-transform:capitalize;margin-bottom:${mi.length ? 4 : 0}px">${m}<small>${mk ? r0(mk) + ' kcal' : ''}</small><span class="spacer"></span><button class="sm primary" data-add="${m}">＋ Add</button></h3>
-    ${mi.map(x => `<div class="list-item"><div class="grow"><b>${esc(x.name)}</b><small>${x.g ? r0(x.g) + ' g · ' : ''}P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</small></div><b>${r0(x.kcal)}</b><button class="sm ghost danger" data-rm="${x.uid}">✕</button></div>`).join('')}</div>`;
+    return `<section class="hcard meal-card">
+      <header><span class="meal-ico">${MEAL_ICON[m]}</span><div class="grow"><b>${m[0].toUpperCase() + m.slice(1)}</b><small>${mi.length ? `${r0(mk)} kcal · ${mi.length} item${mi.length > 1 ? 's' : ''}` : 'Nothing logged yet'}</small></div>
+        <button class="round-add" data-add="${m}" aria-label="Add to ${m}">＋</button></header>
+      ${mi.map(x => `<div class="list-item"><div class="grow"><b>${esc(x.name)}</b><small>${x.g ? r0(x.g) + ' g · ' : ''}P ${r0(x.p)} · C ${r0(x.c)} · F ${r0(x.f)}</small></div><b>${r0(x.kcal)}</b><button class="sm ghost danger" data-rm="${x.uid}" aria-label="Remove">✕</button></div>`).join('')}
+    </section>`;
   }).join('')}
-  <div class="row"><button style="flex:1" id="copyYest">⧉ Copy yesterday</button><button style="flex:1" id="customBtn">＋ Custom food</button></div>`;
+  <div class="chip-actions"><button id="copyYest">⧉ Copy yesterday</button><button id="customBtn">＋ Custom food</button><button id="planBtn">🥗 Log meal plan</button></div>`;
   $$('[data-add]', el).forEach(b => b.onclick = () => openFoodPicker(b.dataset.add));
   $$('[data-rm]', el).forEach(b => b.onclick = () => { S.food[day] = items.filter(x => x.uid !== b.dataset.rm); save(); render(); });
   $('#copyYest').onclick = () => {
@@ -654,6 +661,7 @@ function foodLog(el) {
     S.food[day] = [...items, ...y.map(x => ({ ...x, uid: uid() }))]; save(); toast(`Copied ${y.length} items`); render();
   };
   $('#customBtn').onclick = openCustomFood;
+  $('#planBtn').onclick = openPlanLogger;
 }
 function addFood(meal, food, grams) {
   const k = grams / 100;
@@ -816,17 +824,20 @@ function wToday(el) {
   const sd = scheduledDay(day), ph = PROGRAM.phaseFor(planWeek(day)), s = ensureSession();
   const doneSets = s.exercises.reduce((t, e) => t + e.sets.filter(x => x.done).length, 0), allSets = s.exercises.reduce((t, e) => t + e.sets.length, 0);
   const f = focusOf(sd);
+  const img = sd.rest ? 'rest' : sd.cardio ? (/interval/i.test(sd.name) ? 'intervals' : 'cardio') : f.img;
   el.innerHTML = `${weekStrip()}
-  <div class="card hero" style="background:radial-gradient(circle at 95% 0%, ${f.color}40, transparent 60%), var(--card)">
-    <div class="row">${focusBadge(sd, true)}<span class="spacer"></span><small>${dayLabel()}</small></div>
-    <h3 style="margin:12px 0 2px">${esc(s.name)}</h3><small style="display:block;margin-bottom:6px"><b style="color:var(--text)">Goal:</b> ${f.muscles}</small>
-    <small>${ph.name} phase · ${ph.sets} × ${ph.reps} reps @ RPE ${ph.rpe} · rest 1.5–3 min</small>
-    ${allSets ? `<div class="bar" style="margin:12px 0 4px"><div style="width:${(doneSets / allSets) * 100}%;background:var(--accent)"></div></div><small>${doneSets}/${allSets} sets done</small>` : ''}
-    <p class="callout" style="margin:12px 0 0">Hit the top of the rep range on every set? Add 2.5 kg (upper) or 5 kg (lower) next time. Weights pre-fill from last session.</p></div>
-  ${sd.rest ? '' : `<div class="card coach-cta"><div class="row"><div style="flex:1"><b>🎧 Guided workout</b><br><small>Voice coach in your headset: counts reps, pushes you on the last ones, times your rest${Coach.hr.value ? ` · ❤️ ${Coach.hr.value} bpm` : ''}.</small></div>
-    <button class="sm" id="coachSettings" aria-label="Coach settings">⚙</button></div>
-    <button class="primary block" id="coachStart" style="margin-top:12px">▶ Start guided ${sd.cardio ? 'cardio' : 'workout'}</button></div>`}
-  ${sd.rest ? '<div class="card empty">🛌 Rest day — hit your steps, stretch and sleep 7–9 h.</div>' : ''}
+  <section class="train-hero" style="--ac:${f.color};--ad:${f.deep}">
+    <div class="slide-photo" style="background-image:url(img/${img}.webp);height:190px">
+      <div class="slide-top"><span class="slide-kicker">${f.label.toUpperCase()} DAY · ${dayLabel().toUpperCase()}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
+      <div class="slide-cap"><div class="slide-title">${esc(sd.rest ? 'Rest & recover' : s.name.split(' — ')[0])}</div><div class="slide-sub">${f.muscles}</div></div>
+    </div>
+    <div class="slide-body">
+      <div class="th-chips"><span>${ph.name}</span>${sd.rest ? '<span>8–10k steps</span><span>Sleep 7–9 h</span>' : sd.cardio ? `<span>≈ ${estimateBurn(day)} kcal</span>` : `<span>${ph.sets} × ${ph.reps}</span><span>RPE ${ph.rpe}</span><span>≈ ${estimateBurn(day)} kcal</span>`}</div>
+      ${allSets ? `<div class="slide-bar"><div style="width:${(doneSets / allSets) * 100}%"></div></div><small class="th-progress">${doneSets}/${allSets} sets done</small>` : ''}
+      ${sd.rest ? '' : `<div class="btn-row th-cta"><button class="slide-cta" id="coachStart">🎧 Start guided ${sd.cardio ? 'cardio' : 'workout'}</button><button class="th-gear" id="coachSettings" aria-label="Coach settings">⚙</button></div>`}
+      ${sd.rest || sd.cardio ? '' : '<small class="th-tip">💡 Hit the top of the rep range on every set → add 2.5 kg (upper) or 5 kg (lower) next time.</small>'}
+    </div>
+  </section>
   ${sd.cardio ? `<div class="card"><h3>Cardio</h3><p class="muted" style="margin-top:0">${sd.key === 'C2' ? 'Intervals: 5 min warm-up, 8–10 × (30 s hard / 90 s easy), 5 min cool-down.' : 'Zone 2: a pace where you can still talk in full sentences.'}</p>
     <div class="ex-grid">${sd.ex.map(id => exCard(EX[id])).join('')}</div></div>` : ''}
   ${s.exercises.map((e, ei) => { const ex = EX[e.id]; return `<div class="session-ex"><header>
@@ -1160,6 +1171,7 @@ const swCheck = () => navigator.serviceWorker?.getRegistration().then(r => r?.up
 window.addEventListener('load', swCheck);
 /* "What's new": after an update, show the new version and what changed (once per version). */
 const WHATS_NEW = {
+  'shred12-v28': ['Food: clearer calorie ring with Protein / Carbs / Fat tiles and tidy meal cards', 'Train: photo header with your goal, progress and one-tap guided workout', 'Premium cards, buttons and tabs across the whole app'],
   'shred12-v26': ['Smoother Home: photos stay put and the card no longer jumps when you tap', 'Keyboard no longer shifts the screen while typing', 'Faster taps, lighter effects, and this update notice'],
 };
 async function showWhatsNew() {
