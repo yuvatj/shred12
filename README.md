@@ -22,6 +22,7 @@ Then open http://localhost:5173.
 
 1. Edit the files.
 2. In `sw.js`, bump `VERSION` (e.g. `shred12-v9` → `shred12-v10`) and set `BUILD` to today's date so installed phones pick up the change.
+   Add a line for the new version to `WHATS_NEW` in `js/app.js`; phones show it once after updating.
 3. Run:
 
 ```bash

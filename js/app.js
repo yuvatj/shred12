@@ -1158,6 +1158,22 @@ setInterval(() => { if (reloadPending && safeToReload()) location.reload(); }, 3
 // Ask the browser to look for a new version on launch and whenever the app comes back to the screen.
 const swCheck = () => navigator.serviceWorker?.getRegistration().then(r => r?.update()).catch(() => {});
 window.addEventListener('load', swCheck);
+/* "What's new": after an update, show the new version and what changed (once per version). */
+const WHATS_NEW = {
+  'shred12-v26': ['Smoother Home: photos stay put and the card no longer jumps when you tap', 'Keyboard no longer shifts the screen while typing', 'Faster taps, lighter effects, and this update notice'],
+};
+async function showWhatsNew() {
+  const v = (await runningVersion())?.version; if (!v) return;
+  let seen = null; try { seen = localStorage.getItem('shred12.seenVersion'); localStorage.setItem('shred12.seenVersion', v); } catch { return; }
+  if (seen === v || !P()) return; // no change, or a brand-new user still in onboarding
+  const notes = WHATS_NEW[v] || ['Improvements and fixes'];
+  openModal(`<div style="text-align:center"><div style="font-size:44px">✨</div><h3 style="margin:6px 0 2px;justify-content:center">Updated to ${verLabel(v)}</h3>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">Here's what's new</p></div>
+    <ul class="tight">${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
+    <button class="primary block" id="wnOk" style="margin-top:12px">Got it</button>`);
+  $('#wnOk').onclick = closeModal;
+}
+window.addEventListener('load', () => setTimeout(showWhatsNew, 1200));
 /* Repair: drop the saved app files (not your data) and reload a fresh copy. */
 async function repairApp() {
   if (!confirm('Reload a fresh copy of the app? Your data stays on this phone.')) return;
