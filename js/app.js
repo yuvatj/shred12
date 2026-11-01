@@ -22,14 +22,14 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let day = today();
 let currentView = 'home';
-const ui = { animateHome: true, metric: 'weight', range: '2W', foodTab: 'log', trainTab: 'today', planTab: 'roadmap', mealDay: 0 };
+const ui = { metric: 'weight', range: '2W', foodTab: 'log', trainTab: 'today', planTab: 'roadmap', mealDay: 0 };
 
 function toast(msg) {
   const t = $('#toast'); t.textContent = msg; t.classList.add('show');
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2000);
 }
 function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').classList.remove('hidden'); }
-function closeModal() { $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
+function closeModal() { ui.progressSheet = false; $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
 function save() { Store.save(); }
 function seg(name, options, active) {
   return `<div class="seg" data-seg="${name}">${options.map(([k, l]) => `<button data-segv="${k}" class="${k === active ? 'active' : ''}">${l}</button>`).join('')}</div>`;
@@ -144,7 +144,7 @@ function render() {
   $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.view === currentView));
   v.r($('#view'));
 }
-function go(view) { currentView = view; if (view === 'home') ui.animateHome = true; render(); $('#view').scrollTop = 0; }
+function go(view) { currentView = view; render(); $('#view').scrollTop = 0; }
 
 /* ---------- onboarding wizard ---------- */
 const wiz = { step: 0, d: { sex: 'male', age: 30, height: 175, weight: 80, neck: 38, waist: 90, hip: '', knownBf: '', goalBf: 15, rate: 0.7, activity: 1.55, split: 'ppl', diet: 'any', name: '' } };
@@ -256,8 +256,8 @@ function greeting() {
   const h = new Date().getHours(), name = P().name ? ', ' + esc(P().name) : '';
   return `${h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'}${name}`;
 }
-/* ---------- HOME: premium activity cards ---------- */
-/* Progress 0–1 for each activity, used by the daily score and the card rings. */
+/* ---------- HOME: one big swipeable "do this now" card + two slim cards ---------- */
+/* Progress 0–1 for each activity, used by the score and the slide progress bars. */
 function activityProgress(date) {
   const sd = scheduledDay(date), ws = S.workouts[date], t = targetsFor(date), ft = foodTotals(date);
   const supps = chosenSupps(), taken = S.supps[date] || {};
@@ -269,102 +269,77 @@ function activityProgress(date) {
   const food = r <= 1 ? 0.6 * r + 0.4 * Math.min(1, ft.p / t.protein) : Math.max(0.4, Math.min(1, 1 - (r - 1.08) * 3));
   return { train, fuel, water, food };
 }
-function miniRing(p, color, size = 40) {
-  const R = size / 2 - 4, C = 2 * Math.PI * R;
-  return `<svg class="mini-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${R}" stroke="var(--track)" stroke-width="4" fill="none"/>
-    <circle cx="${size / 2}" cy="${size / 2}" r="${R}" stroke="${color}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-    <text x="50%" y="50%" dy=".35em" text-anchor="middle">${Math.round(p * 100)}</text></svg>`;
-}
-function scoreRing(score) {
-  const R = 40, C = 2 * Math.PI * R;
-  return `<div class="score-ring"><svg width="100" height="100" viewBox="0 0 100 100"><defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3a6"/><stop offset="1" stop-color="#fbbf24"/></linearGradient></defs>
-    <circle cx="50" cy="50" r="${R}" stroke="var(--track)" stroke-width="9" fill="none"/>
-    <circle cx="50" cy="50" r="${R}" stroke="url(#sg)" stroke-width="9" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - score / 100)}" transform="rotate(-90 50 50)" style="transition:stroke-dashoffset .8s"/></svg>
-    <div><b>${score}</b><small>score</small></div></div>`;
-}
-const SUPP_SHORT = { creatine: 'Creatine', protein: 'Protein powder', caffeine: 'Caffeine', vitd: 'Vitamin D3', omega3: 'Omega-3', fiber: 'Psyllium', betaalanine: 'Beta-alanine' };
-function actCard(a) {
-  const pct = Math.round(a.progress * 100);
-  return `<section class="act ${a.done ? 'done' : ''} ${a.next ? 'next' : ''} ${a.open ? 'open' : ''}" style="--ac:${a.accent};--i:${a.i}">
-    <header data-toggle="${a.key}">
-      <div class="act-icon">${a.icon}</div>
-      <div class="act-head"><div class="act-title">${a.title}${a.next ? '<span class="tag">UP NEXT</span>' : ''}</div><small>${a.sub}</small></div>
-      ${a.done ? '<span class="act-check">✓</span>' : miniRing(a.progress, a.accent)}
-    </header>
-    ${a.open ? `<div class="act-body">${a.body}</div>` : `<div class="act-summary"><div class="thin"><div style="width:${pct}%"></div></div><small>${a.summary}</small></div>`}
-  </section>`;
-}
-function homeActivities() {
+const SUPP_SHORT = { creatine: 'Creatine', protein: 'Whey', caffeine: 'Caffeine', vitd: 'Vitamin D3', omega3: 'Omega-3', fiber: 'Psyllium', betaalanine: 'Beta-alanine' };
+
+function slides() {
   const sd = scheduledDay(day), f = focusOf(sd), ws = S.workouts[day], t = targetsFor(day), ft = foodTotals(day);
-  const steps = missionSteps(day), prog = activityProgress(day), nextIdx = steps.findIndex(s => !s.done);
-  if (ui.actDay !== day) { ui.actDay = day; ui.actOpen = {}; }
-  const isOpen = (k, i) => ui.actOpen[k] ?? i === nextIdx;
-  const h = new Date().getHours(), isToday = day === today(), ph = PROGRAM.phaseFor(planWeek(day)), burn = estimateBurn(day);
-  const when = !isToday ? '' : h < 11 ? 'Morning session — the best start to a fat-loss day.' : h < 17 ? 'Fit your session in this afternoon.' : 'Still time for a session tonight.';
+  const steps = missionSteps(day), prog = activityProgress(day), burn = estimateBurn(day), ph = PROGRAM.phaseFor(planWeek(day));
   const supps = chosenSupps(), taken = S.supps[day] || {}, ml = S.water[day] || 0, wt = waterTarget(day), left = t.kcal - ft.kcal;
-  const kpis = items => `<div class="kpis">${items.map(([v, l]) => `<div><b>${v}</b><small>${l}</small></div>`).join('')}</div>`;
+  const h = new Date().getHours(), isToday = day === today();
+  const mins = sd.cardio ? +(sd.name.match(/(\d+)\s*min/) || [])[1] || 30 : 60;
 
-  const trainBody = sd.rest
-    ? `${kpis([[(S.steps[day] || 0).toLocaleString(), 'steps'], ['10,000', 'goal'], ['≈' + burn, 'kcal']])}
-       <div class="thick"><div style="width:${Math.min(100, ((S.steps[day] || 0) / 10000) * 100)}%"></div></div>
-       <div class="btn-row"><input type="number" inputmode="numeric" id="aSteps" value="${S.steps[day] || ''}" placeholder="Steps today"><button class="btn-primary" id="aStepsSave">Save</button></div>`
-    : `${kpis(sd.cardio ? [['≈' + burn, 'kcal burn'], [(sd.name.match(/(\d+)\s*min/) || [])[1] || 30, 'minutes'], [/interval/i.test(sd.name) ? '8×30s' : 'Zone 2', 'intensity']]
-        : [['≈' + burn, 'kcal burn'], [sd.ex.length, 'exercises'], [`${ph.sets}×${ph.reps}`, 'sets × reps']])}
-       ${when ? `<p class="act-note">${when}</p>` : ''}
-       ${ws?.done ? '<button class="btn-soft block" data-go="train">View workout</button>'
-        : `<button class="btn-primary block big" id="aStart">▶ Start guided ${sd.cardio ? 'cardio' : 'workout'}</button><button class="btn-ghost block" data-go="train">Log manually</button>`}`;
-
-  const fuelBody = `<div class="kpi-line"><b>${r0(ft.p)}</b><small>/ ${t.perMealProtein} g protein after training</small></div>
-    <div class="thick"><div style="width:${Math.min(100, (ft.p / t.perMealProtein) * 100)}%"></div></div>
-    <div class="chip-row">${supps.map(s => `<button class="chip-toggle ${taken[s.id] ? 'on' : ''}" data-asupp="${s.id}">${taken[s.id] ? '✓' : '＋'} ${SUPP_SHORT[s.id] || esc(s.name)}</button>`).join('')}</div>
-    <div class="btn-row"><button class="btn-primary" id="aShake">🥤 Protein shake</button><button class="btn-soft" id="aMeal">＋ Meal</button></div>`;
-
-  const cups = 8, per = wt / cups;
-  const waterBody = `<div class="kpi-line"><b>${(ml / 1000).toFixed(2)}</b><small>/ ${(wt / 1000).toFixed(1)} L${isTrainingDay(day) ? ' · +0.5 L training' : ''}</small></div>
-    <div class="cups">${Array.from({ length: cups }, (_, i) => { const fill = clamp((ml - i * per) / per, 0, 1); return `<button class="cup" data-cup="${i + 1}" aria-label="${Math.round((i + 1) * per)} ml"><span style="height:${fill * 100}%"></span></button>`; }).join('')}</div>
-    <small class="hint">Tap a glass to fill up to it · each ≈ ${Math.round(per)} ml</small>
-    <div class="btn-row"><button class="btn-soft" data-water="250">+250</button><button class="btn-soft" data-water="500">+500</button><button class="btn-primary" id="aWaterGoal">✓ Goal</button></div>`;
-
-  const foodBody = `<div class="food-top">${ring(ft.kcal, t.kcal, left >= 0 ? 'var(--kcal)' : 'var(--bad)', r0(Math.abs(left)), left >= 0 ? 'kcal left' : 'over', 108)}
-    <div class="macros">${macroBar('Protein', ft.p, t.protein, 'var(--protein)')}${macroBar('Carbs', ft.c, t.carbs, 'var(--carbs)')}${macroBar('Fat', ft.f, t.fat, 'var(--fat)')}</div></div>
-    <p class="act-note">${left > 0 ? `${r0(left)} kcal · ${Math.max(0, r0(t.protein - ft.p))} g protein left for ${MEALS[suggestedMeal()]}.` : 'Target reached — kitchen closed 👍'}</p>
-    <div class="btn-row"><button class="btn-primary" id="aPlan">🥗 Log meal plan</button><button class="btn-soft" id="aSearch">🔍 Search</button></div>`;
-
-  const acts = [
-    { key: 'train', accent: f.color, icon: f.emoji, title: sd.rest ? 'Active recovery' : `${f.label} workout`, sub: sd.rest ? 'Walk 8–10k steps' : f.muscles,
-      progress: prog.train, summary: ws?.done ? `Done · ≈ ${burn} kcal burned` : sd.rest ? `${(S.steps[day] || 0).toLocaleString()} / 10,000 steps` : `≈ ${burn} kcal · ${sd.cardio ? 'cardio' : sd.ex.length + ' exercises'}`, body: trainBody },
-    { key: 'fuel', accent: '#f472b6', icon: '💊', title: 'Nutrients', sub: 'Post-workout protein & supplements',
-      progress: prog.fuel, summary: `${r0(ft.p)} / ${t.perMealProtein} g protein · ${supps.filter(s => taken[s.id]).length}/${supps.length} supplements`, body: fuelBody },
-    { key: 'water', accent: '#38bdf8', icon: '💧', title: 'Water', sub: 'Stay hydrated through the day',
-      progress: prog.water, summary: `${(ml / 1000).toFixed(2)} / ${(wt / 1000).toFixed(1)} L`, body: waterBody },
-    { key: 'food', accent: '#fb923c', icon: '🍽', title: 'Food', sub: 'Eat to your calorie & protein target',
-      progress: prog.food, summary: `${r0(ft.kcal).toLocaleString()} / ${t.kcal.toLocaleString()} kcal · ${r0(ft.p)} g protein`, body: foodBody },
-  ];
-  return acts.map((a, i) => actCard({ ...a, i: i + 1, done: steps[i].done, next: i === nextIdx, open: isOpen(a.key, i) })).join('');
+  const train = sd.rest
+    ? { icon: f.emoji, kicker: 'REST DAY', title: 'Active recovery', sub: 'An easy walk speeds recovery and burns fat',
+        metric: `<b>${(S.steps[day] || 0).toLocaleString()}</b> / 10,000 steps`,
+        cta: `<div class="slide-input"><input type="number" inputmode="numeric" id="sSteps" value="${S.steps[day] || ''}" placeholder="Steps so far"><button class="slide-cta" id="sStepsSave">Save</button></div>`, more: '' }
+    : { icon: f.emoji, kicker: `${f.label.toUpperCase()} DAY`, title: sd.cardio ? 'Cardio' : `${f.label} workout`, sub: f.muscles,
+        metric: ws?.done ? `<b>✓ Done</b> · ≈ ${burn} kcal burned` : `<b>≈ ${burn}</b> kcal · ${sd.cardio ? mins + ' min' : sd.ex.length + ' exercises'}`,
+        cta: ws?.done ? '<button class="slide-cta soft" data-go="train">View workout</button>' : `<button class="slide-cta" id="sStart">▶ Start ${sd.cardio ? 'cardio' : 'workout'}</button>`,
+        more: ws?.done ? '' : `<button class="slide-link" data-go="train">Log manually</button>` };
+  const fuel = { icon: '💊', kicker: 'NUTRIENTS', title: 'Fuel up', sub: `Protein + supplements within 2 h of training`,
+    metric: `<b>${r0(ft.p)}</b> / ${t.perMealProtein} g protein`,
+    extra: `<div class="slide-chips">${supps.map(s => `<button class="${taken[s.id] ? 'on' : ''}" data-ssupp="${s.id}">${taken[s.id] ? '✓' : '＋'} ${SUPP_SHORT[s.id] || esc(s.name)}</button>`).join('')}</div>`,
+    cta: '<button class="slide-cta" id="sShake">🥤 Log protein shake</button>', more: '<button class="slide-link" id="sMeal">＋ Log a meal instead</button>' };
+  const water = { icon: '💧', kicker: 'WATER', title: 'Drink up', sub: ml >= wt ? 'Goal reached — nice!' : `${((wt - ml) / 1000).toFixed(1)} L to go${isTrainingDay(day) ? ' · includes +0.5 L for training' : ''}`,
+    metric: `<b>${(ml / 1000).toFixed(2)}</b> / ${(wt / 1000).toFixed(1)} L`,
+    cta: '<button class="slide-cta" id="sWater">💧 +250 ml</button>', more: '<button class="slide-link" data-swater="500">+500 ml</button><button class="slide-link" id="sWaterGoal">✓ Reached goal</button><button class="slide-link" data-swater="-250">Undo</button>' };
+  const food = { icon: '🍽', kicker: 'FOOD', title: left >= 0 ? 'Eat to target' : 'Over target', sub: left > 0 ? `${Math.max(0, r0(t.protein - ft.p))} g protein left · next: ${MEALS[suggestedMeal()]}` : 'Kitchen closed for today 👍',
+    metric: `<b>${r0(Math.abs(left)).toLocaleString()}</b> kcal ${left >= 0 ? 'left' : 'over'} · ${r0(ft.kcal).toLocaleString()}/${t.kcal.toLocaleString()}`,
+    cta: '<button class="slide-cta" id="sPlan">🥗 Log my meal plan</button>', more: '<button class="slide-link" id="sSearch">🔍 Search food</button><button class="slide-link" data-go="food">Food log</button>' };
+  return [
+    { key: 'train', accent: f.color, ...train }, { key: 'fuel', accent: '#f472b6', ...fuel },
+    { key: 'water', accent: '#38bdf8', ...water }, { key: 'food', accent: '#fb923c', ...food },
+  ].map((s, i) => ({ ...s, i, done: steps[i].done, progress: prog[s.key] }));
 }
-function todayCard() {
+function slideHTML(s) {
+  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent}">
+    <div class="slide-top"><span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
+    <div class="slide-icon">${s.icon}</div>
+    <div class="slide-title">${s.title}</div>
+    <div class="slide-sub">${s.sub}</div>
+    <div class="slide-metric">${s.metric}</div>
+    <div class="slide-bar"><div style="width:${Math.round(s.progress * 100)}%"></div></div>
+    ${s.extra || ''}
+    <div class="slide-fill"></div>
+    ${s.cta}
+    <div class="slide-more">${s.more}</div>
+  </article>`;
+}
+function sparkline(vals, ideal, w = 84, h = 36) {
+  const all = [...vals.filter(v => v != null), ...ideal]; if (all.length < 2) return '';
+  const lo = Math.min(...all) - 0.2, hi = Math.max(...all) + 0.2, n = ideal.length;
+  const pt = (v, i) => `${(i / (n - 1)) * w},${h - ((v - lo) / (hi - lo)) * h}`;
+  const you = vals.map((v, i) => v == null ? null : pt(v, i)).filter(Boolean).join(' ');
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${ideal.map(pt).join(' ')}" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <polyline points="${you}" fill="none" stroke="var(--weight)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+function slimCards() {
   const steps = missionSteps(day), prog = activityProgress(day), doneN = steps.filter(s => s.done).length;
-  const score = Math.round((prog.train + prog.fuel + prog.water + prog.food) * 25);
-  const t = targetsFor(day), ft = foodTotals(day), sd = scheduledDay(day), next = steps.find(s => !s.done), streak = missionStreak();
-  const nextName = { train: sd.rest ? 'Active recovery' : `${focusOf(sd).label} workout`, fuel: 'Nutrients', water: 'Water', food: 'Food' };
-  return `<section class="hcard today-card" style="--i:0">
-    <div class="today-top"><div style="min-width:0">
-      <small class="eyebrow">${parse(day).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase()}</small>
-      <div class="today-title">${next ? `Up next: ${nextName[next.key]}` : 'Mission complete 🏆'}</div>
-      <small>${doneN} of 4 done${next ? ' · keep going' : ' · great work today'}</small>
-      <div class="chip-line"><span class="chip">Week ${planWeek(day)} · ${PROGRAM.phaseFor(planWeek(day)).name}</span>${streak ? `<span class="chip hot">🔥 ${streak} day${streak > 1 ? 's' : ''}</span>` : ''}</div>
-    </div>${scoreRing(score)}</div>
-    <div class="today-stats">
-      <div><span>🔥</span><b>${estimateBurn(day)}</b><small>kcal burn</small></div>
-      <div><span>🍽</span><b>${r0(ft.kcal).toLocaleString()}</b><small>of ${t.kcal.toLocaleString()} kcal</small></div>
-      <div><span>💧</span><b>${((S.water[day] || 0) / 1000).toFixed(1)}</b><small>of ${(waterTarget(day) / 1000).toFixed(1)} L</small></div>
-    </div></section>`;
+  const score = Math.round((prog.train + prog.fuel + prog.water + prog.food) * 25), streak = missionStreak();
+  const colors = [focusOf(scheduledDay(day)).color, '#f472b6', '#38bdf8', '#fb923c'];
+  const ds = lastDays(14), w = weightAt(day).kg, ideal = idealWeight(day), diff = w - ideal;
+  const status = Math.abs(diff) < 0.3 ? 'On track' : diff > 0 ? `${r1(diff)} kg above ideal` : `${r1(-diff)} kg ahead of plan`;
+  return `<button class="slim" id="slimToday">
+      <div class="seg4">${steps.map((s, i) => `<i style="${s.done ? `background:${colors[i]}` : ''}"></i>`).join('')}</div>
+      <div class="slim-txt"><b>${doneN === 4 ? 'All done today 🏆' : `${doneN} of 4 done`}</b><small>Score ${score}${streak ? ` · 🔥 ${streak}-day streak` : ''}</small></div><span class="slim-go">›</span></button>
+    <button class="slim" id="slimProgress">
+      ${sparkline(ds.map(d => weightOn(d)?.kg ?? null), ds.map(d => idealWeight(d)))}
+      <div class="slim-txt"><b>${r1(w)} kg</b><small>${status} · BMI ${r1(bmiOf(w))}</small></div><span class="slim-go">›</span></button>`;
 }
 function progressCard() {
   const m = METRICS[ui.metric], color = css(m.color), tv = tileValues(ui.metric);
-  return `<div class="section-head"><h2>Your progress</h2><small>You vs ideal</small></div>
-    <div class="metric-pills">${Object.entries(METRICS).map(([k, x]) => `<button data-metric="${k}" class="${ui.metric === k ? 'active' : ''}" style="--c:var(${x.color})"><small>${x.label}</small><b>${tileValues(k).v}</b></button>`).join('')}</div>
-    <section class="hcard" style="--ac:var(${m.color})">
+  return `<div class="metric-pills">${Object.entries(METRICS).map(([k, x]) => `<button data-metric="${k}" class="${ui.metric === k ? 'active' : ''}" style="--c:var(${x.color})"><small>${x.label}</small><b>${tileValues(k).v}</b></button>`).join('')}</div>
+    <section class="hcard" style="--ac:var(${m.color});margin-top:12px">
       <div class="cc-head"><div><small class="eyebrow">${m.label.toUpperCase()}</small><div class="cc-value">${tv.v}<small> ${m.unit}</small></div><small>${tv.sub}</small></div>
         <div class="range-pills">${[['2W', '2W'], ['12W', '12W']].map(([k, l]) => `<button data-range="${k}" class="${ui.range === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
       <div class="legend"><span><i style="background:${color}"></i>You</span><span><i class="dash"></i>Ideal</span></div>
@@ -377,36 +352,70 @@ function progressCard() {
 function bodyFatCard() {
   const p = P(), bf = bfAt(day), wk = planWeek(day), c = Sci.bfCategory(p.sex, bf);
   const pr = clamp(((p.startBf - bf) / (p.startBf - p.goalBf)) * 100, 0, 100);
-  return `<section class="hcard bf-card">
+  return `<section class="hcard bf-card" style="margin-top:12px">
     <div class="row"><div><small class="eyebrow">BODY FAT</small><div class="cc-value">${r1(bf)}<small>% → ${p.goalBf}%</small></div></div><span class="spacer"></span><span class="pill ${c.c}">${c.l}</span></div>
     <div class="thick" style="margin:14px 0 8px"><div style="width:${pr}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
     <small>${r0(pr)}% to goal · ${Math.max(0, 84 - daysBetween(p.startDate, day))} days left · ${PROGRAM.phaseFor(wk).name} phase</small></section>`;
 }
-function renderHome(el) {
-  const animate = ui.animateHome; ui.animateHome = false;
-  el.innerHTML = `<div class="stack home ${animate ? 'animate' : ''}">
-    ${todayCard()}
-    <div class="section-head"><h2>Today's activities</h2><small>in order</small></div>
-    ${homeActivities()}
-    ${progressCard()}
-    ${bodyFatCard()}
-  </div>`;
+function openProgressSheet() {
+  ui.progressSheet = true;
+  openModal(`<h3>Your progress — you vs ideal</h3>${progressCard()}${bodyFatCard()}`);
+  const c = charts.find(x => x.canvas.id === 'cMetric'); if (c) { c.destroy(); charts.splice(charts.indexOf(c), 1); }
   metricChart();
-  bindHome(el);
-  bindActivities(el);
+  const body = $('#modalBody');
+  bindHome(body);
+  $$('[data-range]', body).forEach(b => b.onclick = () => { ui.range = b.dataset.range; render(); });
 }
-function bindActivities(el) {
-  $$('[data-toggle]', el).forEach(h => h.onclick = () => { const k = h.dataset.toggle; ui.actOpen[k] = !h.parentElement.classList.contains('open'); render(); });
-  $$('[data-range]', el).forEach(b => b.onclick = () => { ui.range = b.dataset.range; render(); });
-  const st = $('#aStart'); if (st) st.onclick = () => Coach.start();
-  const ss = $('#aStepsSave'); if (ss) ss.onclick = () => { S.steps[day] = +$('#aSteps').value || 0; save(); toast('Steps saved'); render(); };
-  $$('[data-asupp]', el).forEach(b => b.onclick = () => { const id = b.dataset.asupp; S.supps[day] = { ...(S.supps[day] || {}), [id]: !(S.supps[day] || {})[id] }; save(); render(); });
-  const sh = $('#aShake'); if (sh) sh.onclick = () => { logPlannedMeal({ recipeId: 'shake', scale: 1 }, 'snack'); toast('🥤 Protein shake logged'); render(); };
-  const mm = $('#aMeal'); if (mm) mm.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
-  $$('[data-cup]', el).forEach(b => b.onclick = () => { S.water[day] = Math.round(waterTarget(day) / 8 * +b.dataset.cup); save(); render(); });
-  const wg = $('#aWaterGoal'); if (wg) wg.onclick = () => { S.water[day] = Math.max(S.water[day] || 0, waterTarget(day)); save(); toast('Water goal reached 💧'); render(); };
-  const mp = $('#aPlan'); if (mp) mp.onclick = openPlanLogger;
-  const ms = $('#aSearch'); if (ms) ms.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
+
+function renderHome(el) {
+  const ss = slides(), steps = missionSteps(day), firstOpen = steps.findIndex(s => !s.done);
+  const mask = steps.map(s => +s.done).join('');
+  if (ui.slideDay !== day) { ui.slideDay = day; ui.slide = firstOpen < 0 ? 0 : firstOpen; ui.doneMask = mask; }
+  // A task just got completed (here, in the coach, or anywhere): glide to the next one.
+  let glideTo = null;
+  if (ui.doneMask !== mask) {
+    if (steps[ui.slide]?.done && !(ui.doneMask[ui.slide] === '1') && firstOpen >= 0) glideTo = firstOpen;
+    ui.doneMask = mask;
+  }
+  el.innerHTML = `<div class="stack home">
+    <div class="deck-wrap">
+      <div class="deck" id="deck">${ss.map(slideHTML).join('')}</div>
+      <button class="deck-arrow prev" id="dPrev" aria-label="Previous">‹</button><button class="deck-arrow next" id="dNext" aria-label="Next">›</button>
+    </div>
+    <div class="dots" id="dots">${ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent}" class="${s.done ? 'done' : ''}" aria-label="${s.kicker}"></button>`).join('')}</div>
+    ${slimCards()}
+  </div>`;
+  bindHomeDeck(el, glideTo);
+  bindCommon(el);
+  if (ui.progressSheet) openProgressSheet();
+}
+function bindHomeDeck(el, glideTo) {
+  const deck = $('#deck'), n = 4, width = () => deck.clientWidth + 12; // 12px = gap
+  const paint = i => {
+    $$('[data-dot]', el).forEach((d, k) => d.classList.toggle('active', k === i));
+    $('#dPrev').classList.toggle('hide', i === 0); $('#dNext').classList.toggle('hide', i === n - 1);
+  };
+  const goTo = (i, smooth = true) => { ui.slide = clamp(i, 0, n - 1); deck.scrollTo({ left: ui.slide * width(), behavior: smooth ? 'smooth' : 'auto' }); paint(ui.slide); };
+  goTo(ui.slide, false);
+  if (glideTo != null) setTimeout(() => { goTo(glideTo); toast(`Nice! Next: ${['Workout', 'Nutrients', 'Water', 'Food'][glideTo]}`); }, 650);
+  let t; deck.onscroll = () => { clearTimeout(t); t = setTimeout(() => { ui.slide = Math.round(deck.scrollLeft / width()); paint(ui.slide); }, 80); };
+  $('#dPrev').onclick = () => goTo(ui.slide - 1);
+  $('#dNext').onclick = () => goTo(ui.slide + 1);
+  $$('[data-dot]', el).forEach(d => d.onclick = () => goTo(+d.dataset.dot));
+  $('#slimToday').onclick = () => { const i = missionSteps(day).findIndex(s => !s.done); goTo(i < 0 ? 0 : i); };
+  $('#slimProgress').onclick = openProgressSheet;
+  // Slide actions
+  const st = $('#sStart'); if (st) st.onclick = () => Coach.start();
+  const ss = $('#sStepsSave'); if (ss) ss.onclick = () => { S.steps[day] = +$('#sSteps').value || 0; save(); toast('Steps saved'); render(); };
+  $$('[data-ssupp]', el).forEach(b => b.onclick = () => { const id = b.dataset.ssupp; S.supps[day] = { ...(S.supps[day] || {}), [id]: !(S.supps[day] || {})[id] }; save(); render(); });
+  const sh = $('#sShake'); if (sh) sh.onclick = () => { logPlannedMeal({ recipeId: 'shake', scale: 1 }, 'snack'); toast('🥤 Protein shake logged'); render(); };
+  const sm = $('#sMeal'); if (sm) sm.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
+  const addWater = ml => { S.water[day] = Math.max(0, (S.water[day] || 0) + ml); save(); if (ml > 0) toast(`💧 +${ml} ml`); render(); };
+  const sw = $('#sWater'); if (sw) sw.onclick = () => addWater(250);
+  $$('[data-swater]', el).forEach(b => b.onclick = () => addWater(+b.dataset.swater));
+  const wg = $('#sWaterGoal'); if (wg) wg.onclick = () => { S.water[day] = Math.max(S.water[day] || 0, waterTarget(day)); save(); render(); };
+  const sp = $('#sPlan'); if (sp) sp.onclick = openPlanLogger;
+  const sf = $('#sSearch'); if (sf) sf.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
 }
 function metricRange() {
   if (ui.range === '12W') { const s = P().startDate; return Array.from({ length: 85 }, (_, i) => addDays(s, i)); }
