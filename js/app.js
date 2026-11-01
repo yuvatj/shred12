@@ -29,7 +29,7 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2000);
 }
 function openModal(html) { $('#modalBody').innerHTML = html; $('#modal').classList.remove('hidden'); }
-function closeModal() { ui.progressSheet = false; $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
+function closeModal() { ui.progressSheet = false; ui.workoutSheet = false; $('#modal').classList.add('hidden'); $('#modalBody').innerHTML = ''; }
 function save() { Store.save(); }
 function seg(name, options, active) {
   return `<div class="seg" data-seg="${name}">${options.map(([k, l]) => `<button data-segv="${k}" class="${k === active ? 'active' : ''}">${l}</button>`).join('')}</div>`;
@@ -284,8 +284,8 @@ function slides() {
         cta: `<div class="slide-input"><input type="number" inputmode="numeric" id="sSteps" value="${S.steps[day] || ''}" placeholder="Steps so far"><button class="slide-cta" id="sStepsSave">Save</button></div>`, more: '' }
     : { icon: f.emoji, kicker: `${f.label.toUpperCase()} DAY`, title: sd.cardio ? 'Cardio' : `${f.label} workout`, sub: f.muscles,
         metric: ws?.done ? `<b>✓ Done</b> · ≈ ${burn} kcal burned` : `<b>≈ ${burn}</b> kcal · ${sd.cardio ? mins + ' min' : sd.ex.length + ' exercises'}`,
-        cta: ws?.done ? '<button class="slide-cta soft" data-go="train">View workout</button>' : `<button class="slide-cta" id="sStart">▶ Start ${sd.cardio ? 'cardio' : 'workout'}</button>`,
-        more: ws?.done ? '' : `<button class="slide-link" data-go="train">Log manually</button>` };
+        cta: ws?.done ? '<button class="slide-cta soft" id="sOpen">View workout</button>' : `<button class="slide-cta" id="sOpen">▶ Start ${sd.cardio ? 'cardio' : 'workout'}</button>`,
+        more: `<small class="slide-hint">Tap the card to see ${sd.cardio ? 'the session' : "today's exercises"}</small>` };
   const fuel = { icon: '💊', kicker: 'NUTRIENTS', title: 'Fuel up', sub: `Protein + supplements within 2 h of training`,
     metric: `<b>${r0(ft.p)}</b> / ${t.perMealProtein} g protein`,
     extra: `<div class="slide-chips">${supps.map(s => `<button class="${taken[s.id] ? 'on' : ''}" data-ssupp="${s.id}">${taken[s.id] ? '✓' : '＋'} ${SUPP_SHORT[s.id] || esc(s.name)}</button>`).join('')}</div>`,
@@ -298,14 +298,14 @@ function slides() {
     cta: '<button class="slide-cta" id="sPlan">🥗 Log my meal plan</button>', more: '<button class="slide-link" id="sSearch">🔍 Search food</button><button class="slide-link" data-go="food">Food log</button>' };
   const trainImg = sd.rest ? 'rest' : sd.cardio ? (/interval/i.test(sd.name) ? 'intervals' : 'cardio') : f.img;
   return [
-    { key: 'train', accent: f.color, deep: f.deep, img: trainImg, ...train },
+    { key: 'train', accent: f.color, deep: f.deep, img: trainImg, open: !sd.rest, ...train },
     { key: 'fuel', accent: ACTIVITY.fuel.color, deep: ACTIVITY.fuel.deep, img: 'fuel', ...fuel },
     { key: 'water', accent: ACTIVITY.water.color, deep: ACTIVITY.water.deep, img: 'water', ...water },
     { key: 'food', accent: ACTIVITY.food.color, deep: ACTIVITY.food.deep, img: P().diet === 'veg' ? 'food-veg' : 'food', ...food },
   ].map((s, i) => ({ ...s, i, done: steps[i].done, progress: prog[s.key] }));
 }
 function slideHTML(s) {
-  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent};--ad:${s.deep}">
+  return `<article class="slide ${s.done ? 'done' : ''}" style="--ac:${s.accent};--ad:${s.deep}" ${s.open ? 'data-open="1"' : ''}>
     <div class="slide-photo" style="background-image:url(img/${s.img}.webp)">
       <div class="slide-top"><span class="slide-kicker">${s.i + 1}/4 · ${s.kicker}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
       <div class="slide-cap"><div class="slide-title">${s.title}</div><div class="slide-sub">${s.sub}</div></div>
@@ -385,7 +385,6 @@ function renderHome(el) {
   el.innerHTML = `<div class="stack home">
     <div class="deck-wrap">
       <div class="deck" id="deck">${ss.map(slideHTML).join('')}</div>
-      <button class="deck-arrow prev" id="dPrev" aria-label="Previous">‹</button><button class="deck-arrow next" id="dNext" aria-label="Next">›</button>
     </div>
     <div class="dots" id="dots">${ss.map((s, i) => `<button data-dot="${i}" style="--ac:${s.accent};--ad:${s.deep}" class="${s.done ? 'done' : ''}" aria-label="${s.kicker}"></button>`).join('')}</div>
     ${slimCards()}
@@ -393,24 +392,21 @@ function renderHome(el) {
   bindHomeDeck(el, glideTo);
   bindCommon(el);
   if (ui.progressSheet) openProgressSheet();
+  else if (ui.reopenWorkout || ui.workoutSheet) { const v = ui.wsView; if (typeof v === 'number' && !ui.reopenWorkout) openExerciseView(v); else openWorkoutSheet(); }
 }
 function bindHomeDeck(el, glideTo) {
   const deck = $('#deck'), n = 4, width = () => deck.clientWidth + 12; // 12px = gap
-  const paint = i => {
-    $$('[data-dot]', el).forEach((d, k) => d.classList.toggle('active', k === i));
-    $('#dPrev').classList.toggle('hide', i === 0); $('#dNext').classList.toggle('hide', i === n - 1);
-  };
+  const paint = i => $$('[data-dot]', el).forEach((d, k) => d.classList.toggle('active', k === i));
   const goTo = (i, smooth = true) => { ui.slide = clamp(i, 0, n - 1); deck.scrollTo({ left: ui.slide * width(), behavior: smooth ? 'smooth' : 'auto' }); paint(ui.slide); };
   goTo(ui.slide, false);
   if (glideTo != null) setTimeout(() => { goTo(glideTo); toast(`Nice! Next: ${['Workout', 'Nutrients', 'Water', 'Food'][glideTo]}`); }, 650);
   let t; deck.onscroll = () => { clearTimeout(t); t = setTimeout(() => { ui.slide = Math.round(deck.scrollLeft / width()); paint(ui.slide); }, 80); };
-  $('#dPrev').onclick = () => goTo(ui.slide - 1);
-  $('#dNext').onclick = () => goTo(ui.slide + 1);
   $$('[data-dot]', el).forEach(d => d.onclick = () => goTo(+d.dataset.dot));
   $('#slimToday').onclick = () => { const i = missionSteps(day).findIndex(s => !s.done); goTo(i < 0 ? 0 : i); };
   $('#slimProgress').onclick = openProgressSheet;
   // Slide actions
-  const st = $('#sStart'); if (st) st.onclick = () => Coach.start();
+  const so = $('#sOpen'); if (so) so.onclick = openWorkoutSheet;
+  $$('.slide[data-open]', el).forEach(a => a.onclick = ev => { if (!ev.target.closest('button, input')) openWorkoutSheet(); });
   const ss = $('#sStepsSave'); if (ss) ss.onclick = () => { S.steps[day] = +$('#sSteps').value || 0; save(); toast('Steps saved'); render(); };
   $$('[data-ssupp]', el).forEach(b => b.onclick = () => { const id = b.dataset.ssupp; S.supps[day] = { ...(S.supps[day] || {}), [id]: !(S.supps[day] || {})[id] }; save(); render(); });
   const sh = $('#sShake'); if (sh) sh.onclick = () => { logPlannedMeal({ recipeId: 'shake', scale: 1 }, 'snack'); toast('🥤 Protein shake logged'); render(); };
@@ -421,6 +417,69 @@ function bindHomeDeck(el, glideTo) {
   const wg = $('#sWaterGoal'); if (wg) wg.onclick = () => { S.water[day] = Math.max(S.water[day] || 0, waterTarget(day)); save(); render(); };
   const sp = $('#sPlan'); if (sp) sp.onclick = openPlanLogger;
   const sf = $('#sSearch'); if (sf) sf.onclick = () => openFoodPicker(MEALS[suggestedMeal()]);
+}
+
+/* ---------- Workout sheet: today's planned exercises → exercise → Start ---------- */
+const bestSet = sets => (sets || []).filter(x => x.done).reduce((b, x) => !b || (+x.kg || 0) * 1000 + (+x.reps || 0) > (+b.kg || 0) * 1000 + (+b.reps || 0) ? x : b, null);
+const setText = x => x ? `${x.kg ? x.kg + ' kg × ' : ''}${x.reps} reps` : '';
+function openWorkoutSheet() {
+  ui.workoutSheet = true; ui.reopenWorkout = false; ui.wsView = 'list';
+  const sd = scheduledDay(day), f = focusOf(sd), ph = PROGRAM.phaseFor(planWeek(day)), burn = estimateBurn(day);
+  if (sd.rest) { ui.workoutSheet = false; return; }
+  const head = (title, stats) => `<div class="ws-photo" style="background-image:url(img/${sd.cardio ? (/interval/i.test(sd.name) ? 'intervals' : 'cardio') : f.img}.webp)">
+      <div><span class="slide-kicker">${f.label.toUpperCase()} DAY</span><div class="slide-title">${esc(title)}</div><div class="slide-sub">${f.muscles}</div></div></div>
+    <div class="ws-stats">${stats}</div>`;
+  if (sd.cardio) {
+    openModal(`<div class="ws" style="--ac:${f.color};--ad:${f.deep}">${head(sd.name, `≈ ${burn} kcal · ${/interval/i.test(sd.name) ? '8 × 30 s hard / 90 s easy' : 'Zone 2 — you can still talk'}`)}
+      <div class="ex-grid" style="margin:14px 0">${sd.ex.map(id => exCard(EX[id])).join('')}</div>
+      <button class="slide-cta" id="wsCardio">▶ Start cardio</button></div>`);
+    $('#wsCardio').onclick = () => { closeModal(); ui.reopenWorkout = true; Coach.start(); };
+    $$('#modalBody .ex-card').forEach(c => c.onclick = () => showExercise(c.dataset.id));
+    return;
+  }
+  const s = ensureSession(), n = s.exercises.length;
+  const doneN = s.exercises.filter(e => e.sets.length && e.sets.every(x => x.done)).length;
+  openModal(`<div class="ws" style="--ac:${f.color};--ad:${f.deep}">${head(`${f.label} workout`, `<b>${doneN}/${n}</b> exercises done · ${ph.sets} × ${ph.reps} · ≈ ${burn} kcal`)}
+    <div class="ws-list">${s.exercises.map((e, i) => {
+      const ex = EX[e.id], d = e.sets.filter(x => x.done).length, all = d === e.sets.length && d > 0, last = bestSet(lastSetsFor(e.id, day));
+      return `<button class="ws-row ${all ? 'done' : d ? 'partial' : ''}" data-wsex="${i}">
+        <img src="${exImg(ex)}" alt="" onerror="this.style.visibility='hidden'">
+        <div class="grow"><b>${esc(ex?.name || e.id)}</b><small>${e.sets.length} × ${ph.reps}${last ? ` · last ${setText(last)}` : ''}</small></div>
+        <span class="ws-state">${all ? '✓' : d ? `${d}/${e.sets.length}` : '›'}</span></button>`;
+    }).join('')}</div>
+    <button class="slide-cta" id="wsAll">${doneN ? '▶ Continue guided workout' : '▶ Start full guided workout'}</button>
+    <button class="slide-link block" id="wsManual">Edit sets manually</button></div>`);
+  $$('[data-wsex]').forEach(b => b.onclick = () => openExerciseView(+b.dataset.wsex));
+  $('#wsAll').onclick = () => { S.workouts[day] = s; save(); closeModal(); ui.reopenWorkout = true; Coach.start(); };
+  $('#wsManual').onclick = () => { closeModal(); ui.trainTab = 'today'; go('train'); };
+}
+function openExerciseView(i) {
+  ui.workoutSheet = true; ui.wsView = i;
+  const sd = scheduledDay(day), f = focusOf(sd), ph = PROGRAM.phaseFor(planWeek(day)), s = ensureSession(), e = s.exercises[i], ex = EX[e.id];
+  const pat = Training.patternOf(e.id), last = bestSet(lastSetsFor(e.id, day)), done = e.sets.filter(x => x.done), allDone = done.length === e.sets.length;
+  openModal(`<div class="ws" style="--ac:${f.color};--ad:${f.deep}">
+    <button class="slide-link ws-back" id="wsBack">‹ All exercises</button>
+    <div class="ex-imgs">${(ex?.images || []).slice(0, 2).map((_, k) => `<img src="${exImg(ex, k)}" alt="">`).join('')}</div>
+    <h3 style="margin:4px 0 6px">${esc(ex?.name || e.id)}</h3>
+    <div class="row wrap">${pat ? `<span class="pill good">${esc(pat.name)}</span>` : ''}<span class="pill">${esc(EQUIP[Training.equipKey(ex)].l)}</span><span class="pill">${esc((ex?.primaryMuscles || []).join(', '))}</span></div>
+    <div class="kpis" style="margin-top:12px"><div><b>${e.sets.length}</b><small>sets</small></div><div><b>${ph.reps}</b><small>reps</small></div><div><b>${last ? (last.kg || 'BW') : '—'}</b><small>${last ? 'kg last time' : 'first time'}</small></div></div>
+    ${done.length ? `<div class="ws-sets">${e.sets.map((x, k) => `<div class="${x.done ? 'on' : ''}"><span>Set ${k + 1}</span><b>${x.done ? setText(x) : '—'}</b>${x.done ? '<i>✓</i>' : ''}</div>`).join('')}</div>` : ''}
+    <button class="slide-cta" id="wsStart" style="margin-top:14px">${allDone ? '＋ Add another set' : done.length ? '▶ Continue' : '▶ Start'}</button>
+    <div class="slide-more"><button class="slide-link" id="wsSwap">⇄ Machine busy? Swap</button></div>
+    <details class="ws-how"><summary>How to do it</summary><ol class="tight">${(ex?.instructions || []).map(t => `<li>${esc(t)}</li>`).join('')}</ol></details></div>`);
+  $('#wsBack').onclick = openWorkoutSheet;
+  $('#wsStart').onclick = () => {
+    if (allDone) e.sets.push({ kg: e.sets[e.sets.length - 1]?.kg ?? '', reps: '', done: false });
+    S.workouts[day] = s; save(); closeModal(); ui.reopenWorkout = true; Coach.startExercise(i);
+  };
+  $('#wsSwap').onclick = () => {
+    const alts = Training.alternatives(e.id);
+    openModal(`<div class="ws"><button class="slide-link ws-back" id="wsBack2">‹ ${esc(ex?.name || '')}</button>
+      <h3 style="margin:4px 0 4px">Machine busy?</h3><p class="muted" style="margin:0 0 10px;font-size:13px">Same movement, ranked best → last. Pick the highest one that's free.</p>
+      ${alts.map(id => rankRow(id, Training.rankOf(id), `data-pick="${id}"`)).join('')}</div>`);
+    $('#wsBack2').onclick = () => openExerciseView(i);
+    $$('#modalBody [data-pick]').forEach(r => r.onclick = () => { e.id = r.dataset.pick; S.workouts[day] = s; save(); toast(`Swapped to ${EX[e.id].name}`); openExerciseView(i); });
+  };
 }
 function metricRange() {
   if (ui.range === '12W') { const s = P().startDate; return Array.from({ length: 85 }, (_, i) => addDays(s, i)); }

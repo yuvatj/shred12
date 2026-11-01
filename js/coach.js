@@ -99,17 +99,25 @@
   }
 
   /* ---------- strength coaching ---------- */
-  function startStrength() {
+  /* only = index of one exercise to coach (from the workout sheet); null = whole workout. */
+  function startStrength(only = null) {
     const s = ensureSession(); S.workouts[day] = s; save();
     const ph = PROGRAM.phaseFor(planWeek(day));
-    state = { kind: 'strength', s, ph, range: repRange(ph.reps), ...nextSet(s, 0, -1) };
+    state = { kind: 'strength', s, ph, range: repRange(ph.reps), only };
+    Object.assign(state, nextSet(s, only ?? 0, -1));
     hr.samples = [];
-    if (state.exi == null) { toast('All sets are already done 💪'); state = null; return; }
+    if (state.exi == null) { toast(only != null ? 'All sets of this exercise are done ✓' : 'All sets are already done 💪'); state = null; return; }
     lockScreen(); beep(660, .08);
-    say(`Let's go. ${s.name}. ${s.exercises.length} exercises today.`, true);
+    say(only != null ? `Let's go.` : `Let's go. ${s.name}. ${s.exercises.length} exercises today.`, true);
     ready();
   }
   function nextSet(s, exi, seti) {
+    if (state?.only != null) { // single-exercise mode: stay on this exercise
+      const sets = s.exercises[state.only].sets;
+      for (let k = exi === state.only ? seti + 1 : 0; k < sets.length; k++) if (!sets[k].done) return { exi: state.only, seti: k };
+      for (let k = 0; k < sets.length; k++) if (!sets[k].done) return { exi: state.only, seti: k };
+      return { exi: null, seti: null };
+    }
     for (let e = exi; e < s.exercises.length; e++) {
       for (let k = e === exi ? seti + 1 : 0; k < s.exercises[e].sets.length; k++) if (!s.exercises[e].sets[k].done) return { exi: e, seti: k };
     }
@@ -135,12 +143,13 @@
         <small class="muted">kg for this set</small>
       </div>
       <div class="coach-actions"><button class="primary block coach-go" data-c="go">▶ Start set</button>
-      <button class="ghost block" data-c="skipex">Skip exercise</button></div>`);
+      <button class="ghost block" data-c="skipex">${state.only != null ? 'Back to workout' : 'Skip exercise'}</button></div>`);
     say(first ? `${ex?.name || 'Next exercise'}. ${setLabel()}. ${weightText(set.kg)}, ${lo} to ${hi} reps. Tap start when you're ready.`
       : `${setLabel()}. ${weightText(set.kg)}. Tap start when ready.`);
     el().querySelectorAll('[data-kg]').forEach(b => b.onclick = () => { const i = document.getElementById('cKg'); i.value = Math.max(0, (+i.value || 0) + +b.dataset.kg); });
     el().querySelector('[data-c="go"]').onclick = () => { curSet().kg = +document.getElementById('cKg').value || ''; save(); countdown(); };
     el().querySelector('[data-c="skipex"]').onclick = () => {
+      if (state.only != null) return exit();
       const n = nextSet(state.s, state.exi + 1, -1);
       if (n.exi == null || n.exi === state.exi) return finishStrength();
       Object.assign(state, n); ready();
@@ -213,15 +222,20 @@
     const set = curSet();
     say(state.reps >= state.range[1] ? 'Top of the range — add weight next time. Rack it.' : state.reps >= state.range[0] ? 'Good set. Rack it.' : 'Set done. Rack it and breathe.');
     open(`${header(EX[curEx().id]?.name || '', setLabel())}
-      <div class="coach-body"><div class="coach-sub">How many reps did you do?</div>
+      <div class="coach-body"><div class="coach-sub">Log this set</div>
+        <small class="muted">Reps</small>
         <div class="stepper" style="width:100%;max-width:300px"><button data-r="-1">−</button><input id="cReps" type="number" inputmode="numeric" value="${state.reps || state.range[0]}"><button data-r="1">+</button></div>
-        <div class="coach-sub">at ${set.kg ? set.kg + ' kg' : 'body weight'}</div></div>
-      <div class="coach-actions"><button class="primary block" data-c="save">Save & rest</button></div>`);
+        <small class="muted">Weight (kg)</small>
+        <div class="stepper" style="width:100%;max-width:300px"><button data-w="-2.5">−</button><input id="cKgLog" type="number" inputmode="decimal" step="0.5" value="${set.kg}"><button data-w="2.5">+</button></div></div>
+      <div class="coach-actions"><button class="primary block" data-c="save">✓ Save set</button></div>`);
     el().querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const i = document.getElementById('cReps'); i.value = Math.max(0, +i.value + +b.dataset.r); });
+    el().querySelectorAll('[data-w]').forEach(b => b.onclick = () => { const i = document.getElementById('cKgLog'); i.value = Math.max(0, (+i.value || 0) + +b.dataset.w); });
     el().querySelector('[data-c="save"]').onclick = () => {
-      Object.assign(set, { reps: +document.getElementById('cReps').value || 0, done: true }); save();
+      const kg = document.getElementById('cKgLog').value;
+      Object.assign(set, { reps: +document.getElementById('cReps').value || 0, kg: kg === '' ? '' : +kg, done: true }); save();
+      toast(`Saved: ${set.kg ? set.kg + ' kg × ' : ''}${set.reps} reps`);
       const n = nextSet(state.s, state.exi, state.seti);
-      if (n.exi == null) return finishStrength();
+      if (n.exi == null) return state.only != null ? finishExercise() : finishStrength();
       rest(n);
     };
   }
@@ -266,6 +280,25 @@
     }, 200);
   }
   const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  /* Single-exercise mode finished: summary, then next exercise or back to the list. */
+  function finishExercise() {
+    stopTimer();
+    const s = state.s, e = s.exercises[state.only], done = e.sets.filter(x => x.done);
+    const best = done.reduce((b, x) => (+x.kg || 0) * 100 + (+x.reps || 0) > (+b.kg || 0) * 100 + (+b.reps || 0) ? x : b, done[0] || {});
+    const nextIdx = s.exercises.findIndex(x => x.sets.some(k => !k.done));
+    if (nextIdx < 0) { s.done = true; save(); }
+    say(nextIdx < 0 ? 'Workout complete! Great work.' : `${EX[e.id]?.name || 'Exercise'} done. Nice work.`, true);
+    open(`${header(EX[e.id]?.name || '', 'Exercise complete')}
+      <div class="coach-body"><div class="coach-big huge">${nextIdx < 0 ? '🏆' : '✅'}</div>
+        <div class="coach-big">${done.length}<small> sets saved</small></div>
+        <div class="coach-sub">Best set: ${best.kg ? best.kg + ' kg × ' : ''}${best.reps || 0} reps</div>
+        ${nextIdx < 0 ? '<div class="coach-sub">All exercises done — workout complete!</div>' : `<div class="coach-sub">Next: <b>${esc(EX[s.exercises[nextIdx].id]?.name || '')}</b></div>`}</div>
+      <div class="coach-actions">${nextIdx < 0 ? '' : '<button class="primary block" data-c="nextex">▶ Next exercise</button>'}<button class="block" data-c="exit2">Back to workout</button></div>`);
+    const nx = el().querySelector('[data-c="nextex"]');
+    if (nx) nx.onclick = () => { state.only = nextIdx; Object.assign(state, nextSet(s, nextIdx, -1)); ready(); };
+    el().querySelector('[data-c="exit2"]').onclick = exit;
+    state.phase = 'finished';
+  }
   function finishStrength() {
     stopTimer();
     const s = state.s, sets = s.exercises.reduce((t, e) => t + e.sets.filter(x => x.done).length, 0);
@@ -375,6 +408,7 @@
 
   window.Coach = {
     start() { const sd = scheduledDay(day); if (sd.cardio) startCardio(); else startStrength(); },
+    startExercise: i => startStrength(i),
     startCardio, settings, connectHR, hr, hrSupported, hrMax, active: () => !!state,
   };
 })();
