@@ -845,8 +845,29 @@ function weekStrip() {
   const d0 = parse(day), monday = addDays(day, -((d0.getDay() + 6) % 7));
   return `<div class="week-strip">${Array.from({ length: 7 }, (_, i) => {
     const d = addDays(monday, i), sd = scheduledDay(d), f = focusOf(sd), done = S.workouts[d]?.done;
-    return `<button data-wday="${d}" class="${d === day ? 'active' : ''}" style="--fc:${f.color}"><small>${parse(d).toLocaleDateString(undefined, { weekday: 'narrow' })}</small><span>${done ? '✅' : f.emoji}</span><small>${f.label.split(' ')[0]}</small></button>`;
+    // Date number first so you always know which day you're on; dot = today, colour bar = that day's focus (✓ when done).
+    return `<button data-wday="${d}" class="${d === day ? 'active' : ''} ${d === today() ? 'is-today' : ''} ${d < today() ? 'past' : ''}" style="--fc:${f.color}" aria-label="${parse(d).toLocaleDateString(undefined, { weekday: 'long' })} · ${f.label}">
+      <i class="ws-today"></i><b>${parse(d).getDate()}</b><small>${parse(d).toLocaleDateString(undefined, { weekday: 'short' }).toUpperCase()}</small>
+      <em class="${done ? 'done' : ''}">${done ? '✓' : f.label.split(' ')[0]}</em></button>`;
   }).join('')}</div>`;
+}
+/* Rough session length: each working set ≈ 40 s of work + the coach's auto rest (longer for compounds and in Intensify). */
+const WARMUP_MIN = 8;
+function sessionMinutes(sd, s) {
+  if (sd.rest) return 0;
+  if (sd.cardio) return +(sd.name.match(/(\d+)\s*min/) || [])[1] || 30;
+  const heavy = PROGRAM.phaseFor(planWeek(day)).name === 'Intensify';
+  return Math.round(s.exercises.reduce((t, e) => t + e.sets.length * (40 + (EX[e.id]?.mechanic === 'compound' ? (heavy ? 150 : 120) : (heavy ? 90 : 75))), 0) / 60);
+}
+/* Warm-up by day focus: 5 min easy cardio, then dynamic moves for the joints you're about to load. */
+const WARMUPS = {
+  push: [['Arm circles', '30 s each way'], ['Band pull-aparts', '15 reps'], ['Scap push-ups', '10 reps'], ['Push-ups', '8 easy reps']],
+  pull: [['Arm circles', '30 s each way'], ['Band pull-aparts', '15 reps'], ['Cat–cow', '8 slow reps'], ['Dead hang', '20 s']],
+  legs: [['Leg swings', '10 each leg'], ['Bodyweight squats', '15 reps'], ['Glute bridges', '12 reps'], ['Walking lunges', '8 each leg']],
+  upper: [['Arm circles', '30 s each way'], ['Band pull-aparts', '15 reps'], ['Push-ups', '8 easy reps'], ['Cat–cow', '8 slow reps']],
+};
+function warmupList(sd) {
+  return [['Easy cardio — bike, rower or brisk walk', '5 min'], ...(WARMUPS[sd.focus] || WARMUPS.upper)];
 }
 function renderTrain(el) {
   el.innerHTML = `<div class="stack">${seg('train', [['today', 'Today'], ['program', 'Program'], ['library', 'Library'], ['progress', 'Progress']], ui.trainTab)}<div id="wBody" class="stack"></div></div>`;
@@ -869,54 +890,86 @@ function ensureSession() {
 function wToday(el) {
   const sd = scheduledDay(day), ph = PROGRAM.phaseFor(planWeek(day)), s = ensureSession();
   const doneSets = s.exercises.reduce((t, e) => t + e.sets.filter(x => x.done).length, 0), allSets = s.exercises.reduce((t, e) => t + e.sets.length, 0);
-  const f = focusOf(sd);
+  const f = focusOf(sd), strength = !sd.rest && !sd.cardio, editing = !!ui.trainEdit && !sd.rest;
   const img = sd.rest ? 'rest' : sd.cardio ? (/interval/i.test(sd.name) ? 'intervals' : 'cardio') : f.img;
-  el.innerHTML = `${weekStrip()}
-  <section class="train-hero" style="--ac:${f.color};--ad:${f.deep}">
-    <div class="slide-photo" style="background-image:url(img/${img}.webp);height:190px">
-      <div class="slide-top"><span class="slide-kicker">${f.label.toUpperCase()} DAY · ${dayLabel().toUpperCase()}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : ''}</div>
-      <div class="slide-cap"><div class="slide-title">${esc(sd.rest ? 'Rest & recover' : s.name.split(' — ')[0])}</div><div class="slide-sub">${f.muscles}</div></div>
-    </div>
-    <div class="slide-body">
-      <div class="th-chips"><span>${ph.name}</span>${sd.rest ? '<span>8–10k steps</span><span>Sleep 7–9 h</span>' : sd.cardio ? `<span>≈ ${estimateBurn(day)} kcal</span>` : `<span>${ph.sets} × ${ph.reps}</span><span>RPE ${ph.rpe}</span><span>≈ ${estimateBurn(day)} kcal</span>`}</div>
-      ${allSets ? `<div class="slide-bar"><div style="width:${(doneSets / allSets) * 100}%"></div></div><small class="th-progress">${doneSets}/${allSets} sets done</small>` : ''}
-      ${sd.rest ? '' : `<div class="btn-row th-cta"><button class="slide-cta" id="coachStart">🎧 Start guided ${sd.cardio ? 'cardio' : 'workout'}</button><button class="th-gear" id="coachSettings" aria-label="Coach settings">⚙</button></div>`}
-      ${sd.rest || sd.cardio ? '' : '<small class="th-tip">💡 Hit the top of the rep range on every set → add 2.5 kg (upper) or 5 kg (lower) next time.</small>'}
-    </div>
-  </section>
-  ${sd.cardio ? `<div class="card"><h3>Cardio</h3><p class="muted" style="margin-top:0">${sd.key === 'C2' ? 'Intervals: 5 min warm-up, 8–10 × (30 s hard / 90 s easy), 5 min cool-down.' : 'Zone 2: a pace where you can still talk in full sentences.'}</p>
-    <div class="ex-grid">${sd.ex.map(id => exCard(EX[id])).join('')}</div></div>` : ''}
+  const mins = sessionMinutes(sd, s), total = mins + (strength ? WARMUP_MIN : 0);
+  const thumb = ex => `<div class="tp-thumb" style="--fc:${f.color}"><span>${f.emoji}</span>${ex?.images?.[0] ? `<img src="${exImg(ex)}" loading="lazy" alt="" onerror="this.remove()">` : ''}</div>`;
+  const setChip = x => `<span class="${x.done ? 'on' : ''}">${x.kg ? `${x.kg}×` : ''}${x.reps || ph.reps.split('–')[0]}</span>`;
+  // Plan view: the whole day at a glance — warm-up, then compact exercise rows. Tap a row for the exercise, ⋮ for options.
+  const planView = `
+  <details class="tp-sec" ${ui.warmOpen ? 'open' : ''} id="tpWarm"><summary><b>Warm-up</b><span>${WARMUP_MIN} min</span><i class="tp-chev"></i></summary>
+    ${warmupList(sd).map(([n, d]) => `<div class="tp-row tp-warm"><div class="tp-thumb" style="--fc:${f.color}"><span>🔥</span></div><div class="grow"><b>${n}</b><small>${d}</small></div></div>`).join('')}
+    <small class="muted tp-note">Your first barbell lift also shows light ramp-up sets.</small></details>
+  <details class="tp-sec" open><summary><b>Workout</b><span>${mins} min</span><button class="tp-add" id="addEx" aria-label="Add exercise">＋</button><i class="tp-chev"></i></summary>
+    ${s.exercises.map((e, ei) => { const ex = EX[e.id], d = e.sets.filter(x => x.done).length, all = d && d === e.sets.length;
+      return `<div class="tp-row ${all ? 'done' : ''}" data-open="${ei}" role="button" tabindex="0">${thumb(ex)}
+        <div class="grow"><b>${esc(ex?.name || e.id)}</b><div class="tp-sets">${e.sets.map(setChip).join('')}</div></div>
+        ${all ? '<span class="tp-check">✓</span>' : ''}<button class="tp-more" data-more="${ei}" aria-label="Options for ${esc(ex?.name || '')}">⋮</button></div>`; }).join('') || '<p class="muted" style="margin:8px 0">No exercises yet — tap ＋ to add one.</p>'}
+  </details>`;
+  // Edit view: the full set-by-set logger.
+  const editView = `
   ${s.exercises.map((e, ei) => { const ex = EX[e.id]; return `<div class="session-ex"><header>
-    ${ex?.images?.[0] ? `<img src="${exImg(ex)}" loading="lazy" alt="">` : ''}
+    ${thumb(ex)}
     <div style="flex:1;min-width:0"><b data-exinfo="${e.id}" style="cursor:pointer">${esc(ex?.name || e.id)}</b><br><small>${esc((ex?.primaryMuscles || []).join(', '))}</small></div>
     <button class="sm" data-swap="${ei}" aria-label="Machine busy? Swap">⇄ Busy?</button><button class="sm ghost danger" data-rmex="${ei}" aria-label="Remove">✕</button></header>
     <div class="set-row"><small>Set</small><small style="text-align:center">kg</small><small style="text-align:center">reps</small><small></small></div>
     ${e.sets.map((x, si) => `<div class="set-row"><b style="text-align:center">${si + 1}</b><input type="number" inputmode="decimal" step="0.5" value="${x.kg}" data-ei="${ei}" data-si="${si}" data-k="kg"><input type="number" inputmode="numeric" value="${x.reps}" placeholder="${ph.reps}" data-ei="${ei}" data-si="${si}" data-k="reps"><button class="sm done-btn ${x.done ? 'on' : ''}" data-done="${ei}:${si}">✓</button></div>`).join('')}
     <button class="sm ghost" data-addset="${ei}">＋ Add set</button></div>`; }).join('')}
-  <button id="addEx" class="block">＋ Add exercise</button>
+  ${strength ? '<button id="addEx" class="block">＋ Add exercise</button>' : ''}
   <div class="card"><label>Cardio minutes<input type="number" inputmode="numeric" id="cardioMin" value="${s.cardioMin || ''}" placeholder="0"></label></div>
-  <button class="primary block" id="finish">${s.done ? '✓ Completed — tap to undo' : 'Finish workout'}</button>`;
+  <button class="primary block" id="finish">${s.done ? '✓ Completed — tap to undo' : 'Mark workout as finished'}</button>`;
+  const startLabel = s.done ? '✓ View workout' : sd.cardio ? '▶ Start cardio' : doneSets ? '▶ Continue' : '▶ Start';
+  el.innerHTML = `${weekStrip()}
+  <section class="train-hero tp-hero" style="--ac:${f.color};--ad:${f.deep}">
+    <div class="slide-photo" style="background-image:url(img/${img}.webp);height:132px">
+      <div class="slide-top"><span class="slide-kicker">${f.label.toUpperCase()} DAY · ${dayLabel().toUpperCase()}</span>${s.done ? '<span class="slide-status ok">✓ DONE</span>' : total ? `<span class="slide-status">${total} MIN</span>` : ''}</div>
+      <div class="slide-cap"><div class="slide-title">${esc(sd.rest ? 'Rest & recover' : s.name.split(' — ')[0])}</div><div class="slide-sub">${f.muscles}</div></div>
+    </div>
+    <div class="slide-body">
+      <div class="th-chips"><span>${ph.name}</span>${sd.rest ? '<span>8–10k steps</span><span>Sleep 7–9 h</span>' : sd.cardio ? `<span>≈ ${estimateBurn(day)} kcal</span>` : `<span>${ph.sets} × ${ph.reps}</span><span>RPE ${ph.rpe}</span><span>≈ ${estimateBurn(day)} kcal</span>`}</div>
+      ${allSets ? `<div class="slide-bar"><div style="width:${(doneSets / allSets) * 100}%"></div></div><small class="th-progress">${doneSets}/${allSets} sets done</small>` : ''}
+    </div>
+  </section>
+  ${sd.cardio ? `<div class="card"><h3>Cardio</h3><p class="muted" style="margin-top:0">${sd.key === 'C2' ? 'Intervals: 5 min warm-up, 8–10 × (30 s hard / 90 s easy), 5 min cool-down.' : 'Zone 2: a pace where you can still talk in full sentences.'}</p>
+    <div class="ex-grid">${sd.ex.map(id => exCard(EX[id])).join('')}</div></div>` : ''}
+  ${sd.rest ? `<div class="card"><h3>Recovery day</h3><p class="muted" style="margin:0">Walk 8–10k steps, sleep 7–9 hours and hit your protein. Muscle is built while you recover.</p></div>` : editing ? editView : strength ? planView : ''}
+  ${sd.rest ? '' : `<div class="tp-bar"><button id="tpEdit">${editing ? '✓ Done' : '✎ Edit'}</button><button class="slide-cta" id="coachStart" style="--ac:${f.color};--ad:${f.deep}">${startLabel}</button><button class="th-gear" id="coachSettings" aria-label="Coach settings">⚙</button></div>`}`;
   const persist = () => { S.workouts[day] = s; save(); };
-  const cs = $('#coachStart'); if (cs) cs.onclick = () => Coach.start();
+  const swap = ei => {
+    const curId = s.exercises[ei].id, cur = EX[curId], pat = Training.patternOf(curId);
+    openModal(`<h3>Machine busy? Swap ${esc(cur.name)}</h3>
+      <p class="muted" style="margin:-6px 0 10px;font-size:13px">Same movement${pat ? ` (<b>${esc(pat.name)}</b> — ${esc(pat.muscles)})` : ''}, ranked best → last. Pick the highest one that's free.</p>
+      ${Training.alternatives(curId).map(id => rankRow(id, Training.rankOf(id), `data-pickswap="${id}"`)).join('')}`);
+    $$('[data-pickswap]').forEach(c => c.onclick = () => { s.exercises[ei].id = c.dataset.pickswap; persist(); closeModal(); toast(`Swapped to ${EX[c.dataset.pickswap].name}`); render(); });
+  };
+  const cs = $('#coachStart'); if (cs) cs.onclick = () => s.done ? openWorkoutSheet() : Coach.start();
   const cst = $('#coachSettings'); if (cst) cst.onclick = () => Coach.settings();
+  const te = $('#tpEdit'); if (te) te.onclick = () => { ui.trainEdit = !editing; render(); $('#view').scrollTop = 0; };
+  const wu = $('#tpWarm'); if (wu) wu.ontoggle = () => { ui.warmOpen = wu.open; };
+  $$('[data-open]', el).forEach(r => r.onclick = () => openExerciseView(+r.dataset.open));
+  $$('[data-more]', el).forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const ei = +b.dataset.more, ex = EX[s.exercises[ei].id];
+    openModal(`<h3>${esc(ex?.name || '')}</h3><div class="stack">
+      <button class="block" data-act="how">ⓘ How to do it</button>
+      <button class="block" data-act="swap">⇄ Machine busy? Swap</button>
+      <button class="block" data-act="edit">✎ Edit sets</button>
+      <button class="block danger" data-act="rm">✕ Remove from today</button></div>`);
+    const act = { how: () => showExercise(ex.id), swap: () => swap(ei), edit: () => { closeModal(); ui.trainEdit = true; render(); },
+      rm: () => { s.exercises.splice(ei, 1); persist(); closeModal(); toast('Removed'); render(); } };
+    $$('[data-act]').forEach(x => x.onclick = act[x.dataset.act]);
+  });
   $$('[data-k]', el).forEach(i => i.onchange = () => { s.exercises[i.dataset.ei].sets[i.dataset.si][i.dataset.k] = i.value === '' ? '' : +i.value; persist(); });
   $$('[data-done]', el).forEach(b => b.onclick = () => { const [ei, si] = b.dataset.done.split(':'); const set = s.exercises[ei].sets[si]; set.done = !set.done; persist(); render(); const pr = prMessage(s.exercises[ei].id, set); if (pr) toast(pr); });
   $$('[data-addset]', el).forEach(b => b.onclick = () => { const sets = s.exercises[b.dataset.addset].sets; sets.push({ ...sets[sets.length - 1], reps: '', done: false }); persist(); render(); });
   $$('[data-rmex]', el).forEach(b => b.onclick = () => { s.exercises.splice(+b.dataset.rmex, 1); persist(); render(); });
-  $$('[data-swap]', el).forEach(b => b.onclick = () => {
-    const curId = s.exercises[b.dataset.swap].id, cur = EX[curId], pat = Training.patternOf(curId);
-    const alts = Training.alternatives(curId);
-    openModal(`<h3>Machine busy? Swap ${esc(cur.name)}</h3>
-      <p class="muted" style="margin:-6px 0 10px;font-size:13px">Same movement${pat ? ` (<b>${esc(pat.name)}</b> — ${esc(pat.muscles)})` : ''}, ranked best → last. Pick the highest one that's free.</p>
-      ${alts.map(id => rankRow(id, Training.rankOf(id), `data-pickswap="${id}"`)).join('')}`);
-    $$('[data-pickswap]').forEach(c => c.onclick = () => { s.exercises[b.dataset.swap].id = c.dataset.pickswap; persist(); closeModal(); toast(`Swapped to ${EX[c.dataset.pickswap].name}`); render(); });
-  });
+  $$('[data-swap]', el).forEach(b => b.onclick = () => swap(+b.dataset.swap));
   $$('[data-wday]', el).forEach(b => b.onclick = () => { day = b.dataset.wday; render(); });
   $$('[data-exinfo]', el).forEach(a => a.onclick = () => showExercise(a.dataset.exinfo));
   $$('.ex-card[data-id]', el).forEach(c => c.onclick = () => showExercise(c.dataset.id));
-  $('#cardioMin').onchange = e => { s.cardioMin = +e.target.value || 0; persist(); };
-  $('#finish').onclick = () => { s.done = !s.done; persist(); toast(s.done ? '💪 Workout logged!' : 'Marked as not done'); render(); };
-  $('#addEx').onclick = () => { ui.trainTab = 'library'; render(); toast('Tap an exercise to add it'); };
+  const cm = $('#cardioMin'); if (cm) cm.onchange = e => { s.cardioMin = +e.target.value || 0; persist(); };
+  const fin = $('#finish'); if (fin) fin.onclick = () => { s.done = !s.done; persist(); toast(s.done ? '💪 Workout logged!' : 'Marked as not done'); render(); };
+  const ae = $('#addEx'); if (ae) ae.onclick = e => { e.preventDefault(); e.stopPropagation(); ui.trainTab = 'library'; render(); toast('Tap an exercise to add it'); };
 }
 function exCard(e, attrs = '') {
   if (!e) return '';
@@ -1225,6 +1278,9 @@ const swCheck = () => navigator.serviceWorker?.getRegistration().then(r => r?.up
 window.addEventListener('load', swCheck);
 /* "What's new": after an update, show the new version and what changed (once per version). */
 const WHATS_NEW = {
+  'shred12-v32': ['Train: new day plan with dates in the week strip, total minutes, a Warm-up and Workout list', 'Compact exercise rows with your planned sets; tap ⋮ to swap, remove or see how to do it', 'Edit and Start are always at the bottom of the screen'],
+  'shred12-v31': ['Breathing guide: a quiet rising sound tells you to breathe in and a falling one to breathe out, synced to every rep', 'Calm 4 s in / 6 s out breathing during rest to bring your heart rate down', 'Choose Soft, Medium or Off and preview it in Coach settings'],
+  'shred12-v30': ['More human coach voice: picks the most natural voice on your phone, with a voice picker in Coach settings', 'Speaks with energy on the last reps and calmer while you rest, with natural pauses', 'Varied phrasing so cues never repeat word for word, and it sometimes uses your name'],
   'shred12-v29': ['Trend weight: a smoothed line on your weight graph that ignores daily water swings', 'Measured maintenance: Plan works out your real calorie needs from your own food and weight logs', 'New PR alerts, plate calculator and warm-up sets for barbell lifts'],
   'shred12-v28': ['Food: clearer calorie ring with Protein / Carbs / Fat tiles and tidy meal cards', 'Train: photo header with your goal, progress and one-tap guided workout', 'Premium cards, buttons and tabs across the whole app'],
   'shred12-v26': ['Smoother Home: photos stay put and the card no longer jumps when you tap', 'Keyboard no longer shifts the screen while typing', 'Faster taps, lighter effects, and this update notice'],

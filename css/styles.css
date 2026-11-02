@@ -249,11 +249,16 @@ th { color: var(--muted); font-size: 11px; text-transform: uppercase; }
 /* ---------- training: focus, week strip, ranked rows ---------- */
 .focus-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 800; color: var(--fc); background: color-mix(in srgb, var(--fc) 16%, transparent); border: 1px solid color-mix(in srgb, var(--fc) 45%, transparent); white-space: nowrap; vertical-align: middle; }
 .focus-badge.big { font-size: 15px; padding: 6px 14px; text-transform: uppercase; letter-spacing: .04em; }
-.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.week-strip button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0; border-radius: 14px; background: var(--card); border: 1.5px solid var(--line); }
-.week-strip button span { font-size: 18px; line-height: 1.2; }
-.week-strip button small { font-size: 10px; font-weight: 700; }
-.week-strip button.active { border-color: var(--fc); background: color-mix(in srgb, var(--fc) 15%, var(--card)); }
+.week-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 4px 0 2px; }
+.week-strip button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 10px 0 8px; border-radius: 14px; background: transparent; border: none; color: var(--muted); }
+.week-strip button b { font-size: 20px; line-height: 1.1; color: var(--text); font-weight: 700; }
+.week-strip button small { font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.week-strip button em { font-style: normal; font-size: 9px; font-weight: 800; margin-top: 3px; padding: 2px 6px; border-radius: 99px; color: var(--fc); background: color-mix(in srgb, var(--fc) 14%, transparent); }
+.week-strip button em.done { color: #04201a; background: #22d3a6; }
+.week-strip button.past:not(.active) b { color: var(--muted); }
+.week-strip .ws-today { position: absolute; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: transparent; }
+.week-strip button.is-today .ws-today { background: var(--fc); }
+.week-strip button.active { background: color-mix(in srgb, var(--fc) 13%, var(--card)); box-shadow: inset 0 -3px 0 var(--fc); }
 .week-strip button.active small { color: var(--text); }
 .rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .rank-row:last-child { border-bottom: none; }
@@ -525,3 +530,34 @@ button.primary { background: linear-gradient(135deg, #22d3a6, #10b981); color: #
 .th-cta .slide-cta { flex: 1; }
 .th-gear { flex: 0 0 48px !important; width: 48px; padding: 0; border-radius: 16px; font-size: 18px; background: var(--track); border: 1px solid var(--edge); }
 .th-tip { display: block; margin-top: 10px; font-size: 12px; line-height: 1.5; }
+.coach-breath { color: var(--accent); font-size: 14px; font-weight: 700; min-height: 1.3em; }
+
+/* ---------- Train · Today plan view ---------- */
+.tp-hero .slide-status:not(.ok) { background: rgba(0,0,0,.45); color: #fff; backdrop-filter: blur(6px); }
+.tp-sec { border-top: 1px solid var(--line); padding: 2px 0 4px; }
+.tp-sec > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 2px; cursor: pointer; }
+.tp-sec > summary::-webkit-details-marker { display: none; }
+.tp-sec > summary b { flex: 1; font-size: 19px; letter-spacing: -.01em; }
+.tp-sec > summary span { font-size: 12px; font-weight: 800; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.tp-chev { width: 10px; height: 10px; border-right: 2.5px solid var(--text); border-bottom: 2.5px solid var(--text); transform: rotate(45deg); margin: 0 6px 4px 4px; transition: transform .2s; }
+.tp-sec[open] .tp-chev { transform: rotate(-135deg); margin-bottom: -4px; }
+.tp-add { width: 38px; height: 38px; padding: 0; border-radius: 12px; font-size: 20px; line-height: 1; background: var(--track); border: 1px solid var(--edge, var(--line)); }
+.tp-row { display: flex; align-items: center; gap: 12px; padding: 10px 2px; cursor: pointer; border-radius: 14px; }
+.tp-row:active { background: var(--track); }
+.tp-row .grow { flex: 1; min-width: 0; }
+.tp-row b { display: block; font-size: 15px; line-height: 1.25; }
+.tp-row small { color: var(--muted); font-size: 13px; }
+.tp-thumb { position: relative; flex: 0 0 64px; width: 64px; height: 64px; border-radius: 14px; overflow: hidden; display: grid; place-items: center; font-size: 26px; background: color-mix(in srgb, var(--fc) 16%, var(--card)); }
+.tp-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.tp-warm .tp-thumb { flex-basis: 44px; width: 44px; height: 44px; font-size: 18px; }
+.tp-sets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.tp-sets span { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: var(--track); color: var(--muted); }
+.tp-sets span.on { background: color-mix(in srgb, #22d3a6 22%, transparent); color: #22d3a6; }
+.tp-row.done b { color: var(--muted); }
+.tp-check { color: #22d3a6; font-weight: 900; }
+.tp-more { flex: none; width: 34px; height: 40px; padding: 0; border: none; background: transparent; color: var(--muted); font-size: 22px; font-weight: 900; }
+.tp-note { display: block; padding: 0 2px 10px; font-size: 12px; }
+.tp-bar { position: sticky; bottom: -24px; z-index: 5; display: flex; gap: 10px; margin: 6px -16px -24px; padding: 12px 16px calc(12px + 0px); background: linear-gradient(to top, var(--bg) 70%, transparent); }
+.tp-bar > button:first-child { flex: 1; border-radius: 16px; font-weight: 800; }
+.tp-bar .slide-cta { flex: 1.6; margin: 0; }
+.tp-bar .th-gear { flex: 0 0 48px; }
