@@ -141,12 +141,15 @@
         <div class="coach-sub">${set.kg ? set.kg + ' kg' : 'Choose your weight'} · RPE ${state.ph.rpe}</div>
         <div class="coach-kg"><button data-kg="-2.5">−2.5</button><input id="cKg" type="number" inputmode="decimal" step="0.5" value="${set.kg}"><button data-kg="2.5">+2.5</button></div>
         <small class="muted">kg for this set</small>
+        <small class="coach-plates" id="cPlates">${platesText(set.kg, ex)}</small>
       </div>
       <div class="coach-actions"><button class="primary block coach-go" data-c="go">▶ Start set</button>
       <button class="ghost block" data-c="skipex">${state.only != null ? 'Back to workout' : 'Skip exercise'}</button></div>`);
     say(first ? `${ex?.name || 'Next exercise'}. ${setLabel()}. ${weightText(set.kg)}, ${lo} to ${hi} reps. Tap start when you're ready.`
       : `${setLabel()}. ${weightText(set.kg)}. Tap start when ready.`);
-    el().querySelectorAll('[data-kg]').forEach(b => b.onclick = () => { const i = document.getElementById('cKg'); i.value = Math.max(0, (+i.value || 0) + +b.dataset.kg); });
+    const paintPlates = () => { document.getElementById('cPlates').textContent = platesText(document.getElementById('cKg').value, ex); };
+    el().querySelectorAll('[data-kg]').forEach(b => b.onclick = () => { const i = document.getElementById('cKg'); i.value = Math.max(0, (+i.value || 0) + +b.dataset.kg); paintPlates(); });
+    document.getElementById('cKg').oninput = paintPlates;
     el().querySelector('[data-c="go"]').onclick = () => { curSet().kg = +document.getElementById('cKg').value || ''; save(); countdown(); };
     el().querySelector('[data-c="skipex"]').onclick = () => {
       if (state.only != null) return exit();
@@ -233,7 +236,9 @@
     el().querySelector('[data-c="save"]').onclick = () => {
       const kg = document.getElementById('cKgLog').value;
       Object.assign(set, { reps: +document.getElementById('cReps').value || 0, kg: kg === '' ? '' : +kg, done: true }); save();
-      toast(`Saved: ${set.kg ? set.kg + ' kg × ' : ''}${set.reps} reps`);
+      const pr = prMessage(curEx().id, set);
+      toast(pr || `Saved: ${set.kg ? set.kg + ' kg × ' : ''}${set.reps} reps`);
+      if (pr) { beep(1320, .18); say('New personal record! Great lift.', true); }
       const n = nextSet(state.s, state.exi, state.seti);
       if (n.exi == null) return state.only != null ? finishExercise() : finishStrength();
       rest(n);

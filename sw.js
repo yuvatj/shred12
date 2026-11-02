@@ -2,8 +2,8 @@
    Updates are all-or-nothing: a new version downloads every file in the background, and only
    when all of them arrived does it take over (the app then reloads itself once).
    Bump VERSION (and BUILD) whenever app files change so phones pick up the update. */
-const VERSION = 'shred12-v28';
-const BUILD = '2026-11-02';
+const VERSION = 'shred12-v29';
+const BUILD = '2026-11-03';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'css/styles.css',
   'js/app.js', 'js/coach.js', 'js/foods.js', 'js/science.js', 'js/training.js', 'js/store.js', 'data/exercises.js',

@@ -54,6 +54,43 @@ function targetsFor(date) {
   if (S.calorieAdj) { t.kcal += S.calorieAdj; t.carbs = Math.max(0, t.carbs + Math.round(S.calorieAdj / 4)); }
   return t;
 }
+const trendMap = () => Sci.trend(S.weights, today());
+const trendAt = (date, tr = trendMap()) => tr[date] ?? tr[Object.keys(tr).filter(d => d <= date).sort().pop()] ?? weightAt(date)?.kg;
+function measuredMaintenance(date) {
+  const intake = Object.fromEntries(Object.keys(S.food).map(d => [d, foodTotals(d).kcal]));
+  return Sci.measuredTdee(S.weights, intake, addDays(date, -1)); // yesterday: today's log is still in progress
+}
+
+/* ---------- lifting helpers: PRs (Epley e1RM), plates, warm-ups ---------- */
+function bestE1rm(exId, before) {
+  let best = 0;
+  for (const [d, s] of Object.entries(S.workouts)) if (d < before) for (const e of s.exercises || []) if (e.id === exId)
+    for (const x of e.sets) if (x.done && +x.kg) best = Math.max(best, Sci.e1rm(+x.kg, +x.reps || 0));
+  return best;
+}
+/* Returns a short message when this set beats every earlier session's best estimated 1RM. */
+function prMessage(exId, set) {
+  if (!set.done || !+set.kg || !+set.reps) return null;
+  const prev = bestE1rm(exId, day), now = Sci.e1rm(+set.kg, +set.reps);
+  return prev && now > prev + 0.05 ? `🏆 New PR! ${EX[exId]?.name || 'Lift'}: est. 1RM ${r1(now)} kg (+${r1(now - prev)})` : null;
+}
+const barKg = ex => ex?.equipment === 'e-z curl bar' ? 10 : 20;
+/* Plates per side for a target, greedy from the standard gym set; null if not a barbell lift. */
+function platesFor(kg, ex) {
+  if (Training.equipKey(ex) !== 'barbell' || !(+kg > 0)) return null;
+  let side = (+kg - barKg(ex)) / 2; if (side < 0) return null;
+  const out = [];
+  for (const p of [25, 20, 15, 10, 5, 2.5, 1.25]) while (side >= p - 1e-9) { out.push(p); side -= p; }
+  return { plates: out, left: +side.toFixed(2), bar: barKg(ex) };
+}
+const platesText = (kg, ex) => { const p = platesFor(kg, ex); return !p ? '' : p.plates.length ? `Each side: ${p.plates.join(' + ')}${p.left ? ` (+${p.left} short)` : ''}` : `Empty ${p.bar} kg bar`; };
+/* Strong-style warm-up ramp for the first heavy set: bar × 10, 40% × 8, 60% × 5, 80% × 3 (rounded to 2.5 kg). */
+function warmupsFor(kg, ex) {
+  if (Training.equipKey(ex) !== 'barbell' || !(+kg >= barKg(ex) + 20)) return [];
+  const r = v => Math.max(barKg(ex), Math.round(v / 2.5) * 2.5);
+  return [[barKg(ex), 10], [r(kg * .4), 8], [r(kg * .6), 5], [r(kg * .8), 3]].filter((x, i, a) => i === 0 || x[0] > a[i - 1][0]);
+}
+
 function programWeek(date) { return Math.floor(daysBetween(P().startDate, date) / 7) + 1; }
 const planWeek = date => clamp(programWeek(date), 1, 12);
 function split() { return PROGRAM.splits[P().split] || PROGRAM.splits.upper_lower; }
@@ -352,7 +389,9 @@ function progressCard() {
     <section class="hcard" style="--ac:var(${m.color});margin-top:12px">
       <div class="cc-head"><div><small class="eyebrow">${m.label.toUpperCase()}</small><div class="cc-value">${tv.v}<small> ${m.unit}</small></div><small>${tv.sub}</small></div>
         <div class="range-pills">${[['2W', '2W'], ['12W', '12W']].map(([k, l]) => `<button data-range="${k}" class="${ui.range === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
-      <div class="legend"><span><i style="background:${color}"></i>You</span><span><i class="dash"></i>Ideal</span></div>
+      <div class="legend">${ui.metric === 'weight' && S.weights.length > 1
+        ? `<span title="Smoothed weight — ignores day-to-day water swings"><i style="background:${color}"></i>Trend ${r1(trendAt(day))}</span><span><i style="background:${color};opacity:.6;width:7px;height:7px;border-radius:50%"></i>Scale</span>`
+        : `<span><i style="background:${color}"></i>You</span>`}<span><i class="dash"></i>Ideal</span></div>
       <div class="chart-box"><canvas id="cMetric"></canvas></div>
       <div class="status-line">${metricStatus(ui.metric)}</div>
       <div class="divider"></div>
@@ -485,6 +524,8 @@ function openExerciseView(i) {
     <div class="row wrap">${pat ? `<span class="pill good">${esc(pat.name)}</span>` : ''}<span class="pill">${esc(EQUIP[Training.equipKey(ex)].l)}</span><span class="pill">${esc((ex?.primaryMuscles || []).join(', '))}</span></div>
     <div class="kpis" style="margin-top:12px"><div><b>${e.sets.length}</b><small>sets</small></div><div><b>${ph.reps}</b><small>reps</small></div><div><b>${last ? (last.kg || 'BW') : '—'}</b><small>${last ? 'kg last time' : 'first time'}</small></div></div>
     ${done.length ? `<div class="ws-sets">${e.sets.map((x, k) => `<div class="${x.done ? 'on' : ''}"><span>Set ${k + 1}</span><b>${x.done ? setText(x) : '—'}</b>${x.done ? '<i>✓</i>' : ''}</div>`).join('')}</div>` : ''}
+    ${(() => { const kg = +e.sets[0]?.kg || +last?.kg || 0, wu = done.length ? [] : warmupsFor(kg, ex), pt = platesText(kg, ex);
+      return wu.length || pt ? `<div class="ws-warm">${wu.length ? `<b>Warm-up before ${kg} kg</b><div>${wu.map(([w, r]) => `<span>${w} kg × ${r}</span>`).join('')}</div>` : ''}${pt ? `<small>🏋 ${kg} kg · ${pt}</small>` : ''}</div>` : ''; })()}
     <button class="slide-cta" id="wsStart" style="margin-top:14px">${allDone ? '＋ Add another set' : done.length ? '▶ Continue' : '▶ Start'}</button>
     <div class="slide-more"><button class="slide-link" id="wsSwap">⇄ Machine busy? Swap</button></div>
     <details class="ws-how"><summary>How to do it</summary><ol class="tight">${(ex?.instructions || []).map(t => `<li>${esc(t)}</li>`).join('')}</ol></details></div>`);
@@ -515,6 +556,11 @@ function metricChart() {
     { label: 'Ideal', data: ideal, borderColor: css('--muted'), borderDash: [6, 5], borderWidth: 2, pointRadius: 0, tension: .2 },
   ];
   const opts = { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.raw == null ? '—' : m.fmt(c.raw)} ${m.unit}` } } } };
+  if (ui.metric === 'weight' && S.weights.length > 1) { // scale weigh-ins as dots, smoothed trend as the line
+    const tr = trendMap();
+    Object.assign(datasets[0], { label: 'Scale', showLine: false, pointRadius: 3, pointBackgroundColor: color + '99', pointBorderWidth: 0 });
+    datasets.splice(1, 0, { label: 'Trend', data: dates.map(d => tr[d] != null ? +tr[d].toFixed(2) : null), borderColor: color, borderWidth: 3, pointRadius: 0, tension: .3, spanGaps: true });
+  }
   if (ui.metric === 'bmi') {
     datasets.push({ label: 'Healthy limit', data: dates.map(() => P().asianBmi ? 23 : 25), borderColor: css('--accent') + '88', borderWidth: 1, pointRadius: 0, borderDash: [2, 4] });
   }
@@ -524,8 +570,8 @@ function metricChart() {
 function metricStatus(key) {
   const m = METRICS[key];
   if (key === 'weight' || key === 'bmi') {
-    const cur = weightAt(day).kg, ideal = idealWeight(day), diff = cur - ideal;
-    const txt = Math.abs(diff) < 0.3 ? '<span class="pill good">On track</span> Right on your ideal path.'
+    const cur = weightAt(day).kg, ideal = idealWeight(day), diff = trendAt(day) - ideal;
+    const txt = Math.abs(diff) < 0.3 ? '<span class="pill good">On track</span> Your trend is right on the ideal path.'
       : diff > 0 ? `<span class="pill warn">${r1(diff)} kg above</span> ideal path — tighten calories & steps.`
       : `<span class="pill good">${r1(-diff)} kg ahead</span> of plan — great work, don't cut further.`;
     if (key === 'bmi') { const c = Sci.bmiCategory(bmiOf(cur), P().asianBmi); return `<span class="pill ${c.c}">${c.l}</span> Healthy weight for your height: ${r1(18.5 * (P().height / 100) ** 2)}–${r1((P().asianBmi ? 23 : 25) * (P().height / 100) ** 2)} kg`; }
@@ -854,7 +900,7 @@ function wToday(el) {
   const cs = $('#coachStart'); if (cs) cs.onclick = () => Coach.start();
   const cst = $('#coachSettings'); if (cst) cst.onclick = () => Coach.settings();
   $$('[data-k]', el).forEach(i => i.onchange = () => { s.exercises[i.dataset.ei].sets[i.dataset.si][i.dataset.k] = i.value === '' ? '' : +i.value; persist(); });
-  $$('[data-done]', el).forEach(b => b.onclick = () => { const [ei, si] = b.dataset.done.split(':'); const set = s.exercises[ei].sets[si]; set.done = !set.done; persist(); render(); });
+  $$('[data-done]', el).forEach(b => b.onclick = () => { const [ei, si] = b.dataset.done.split(':'); const set = s.exercises[ei].sets[si]; set.done = !set.done; persist(); render(); const pr = prMessage(s.exercises[ei].id, set); if (pr) toast(pr); });
   $$('[data-addset]', el).forEach(b => b.onclick = () => { const sets = s.exercises[b.dataset.addset].sets; sets.push({ ...sets[sets.length - 1], reps: '', done: false }); persist(); render(); });
   $$('[data-rmex]', el).forEach(b => b.onclick = () => { s.exercises.splice(+b.dataset.rmex, 1); persist(); render(); });
   $$('[data-swap]', el).forEach(b => b.onclick = () => {
@@ -968,6 +1014,8 @@ function renderPlan(el) {
 }
 function planRoadmap(el) {
   const p = P(), proj = projection(), wk = programWeek(day), t = targetsFor(day), ci = Sci.checkIn(S.weights, p), final = proj[12];
+  // Measured maintenance replaces the formula via calorieAdj; capped at ±500 kcal so one bad logging week can't swing targets wildly.
+  const mm = measuredMaintenance(day), baseTdee = t.tdee, mmAdj = mm?.tdee ? clamp(Math.round((mm.tdee - baseTdee) / 10) * 10, -500, 500) : 0;
   el.innerHTML = `
   <div class="card hero"><div class="row"><div><small>Start</small><div class="big">${p.startWeight}<small> kg · ${p.startBf}%</small></div></div><span class="spacer"></span><span style="font-size:22px">→</span><span class="spacer"></span>
     <div style="text-align:right"><small>Week 12</small><div class="big">${final.kg}<small> kg · ${final.bf}%</small></div></div></div>
@@ -976,6 +1024,11 @@ function planRoadmap(el) {
   <div class="card"><h3>🧭 Weekly check-in</h3><p class="callout" style="margin:0">${ci.msg}</p>
     ${ci.adj ? `<button class="primary block" id="applyAdj" style="margin-top:10px">Apply ${ci.adj > 0 ? '+' : ''}${ci.adj} kcal</button>` : ''}
     ${S.calorieAdj ? `<button class="ghost block" id="resetAdj">Reset adjustment (${S.calorieAdj > 0 ? '+' : ''}${S.calorieAdj} kcal)</button>` : ''}</div>
+  <div class="card"><h3>📊 Your measured maintenance</h3>${!mm ? '<p class="muted" style="margin:0">Log your weight and food for 2 weeks and the app will work out your real maintenance calories from your own data, instead of a formula.</p>'
+    : mm.need ? `<p class="muted" style="margin:0">Weight trend ready. Log food on ${mm.need} more day${mm.need > 1 ? 's' : ''} (within the last ${mm.days} days) to measure your maintenance.</p>`
+    : `<div class="row"><div><small>Measured</small><div class="big" style="font-size:22px">${mm.tdee.toLocaleString()}</div></div><span class="spacer"></span><div style="text-align:right"><small>Formula estimate</small><div class="big" style="font-size:22px">${baseTdee.toLocaleString()}</div></div></div>
+      <small class="muted">From ${mm.logged} logged days over ${mm.days} days: you ate ${mm.intake.toLocaleString()} kcal/day on average and your weight changed ${mm.kgPerWeek > 0 ? '+' : ''}${r1(mm.kgPerWeek)} kg/week (7,700 kcal per kg). Unlogged snacks make this read low, so log everything.</small>
+      ${Math.abs(mmAdj - S.calorieAdj) >= 50 ? `<button class="primary block" id="useMeasured" style="margin-top:10px">Use measured maintenance (${mmAdj > 0 ? '+' : ''}${mmAdj} kcal vs formula)</button>` : '<p class="callout" style="margin:10px 0 0">✓ Your targets already match your measured maintenance.</p>'}`}</div>
   <div class="card"><h3>Your daily numbers</h3>
     <div class="list-item"><div class="grow"><b>Calories</b><small>Maintenance ${t.tdee} − deficit ${t.deficit} ${refLink('mifflin')}</small></div><b>${t.kcal}</b></div>
     <div class="list-item"><div class="grow"><b>Protein</b><small>2.6 g per kg lean mass ${refLink('helms')}</small></div><b>${t.protein} g</b></div>
@@ -993,6 +1046,7 @@ function planRoadmap(el) {
   ] }, options: { scales: { x: { stacked: true }, y: { stacked: true }, y2: { position: 'right', grid: { display: false } } } } });
   const ab = $('#applyAdj'); if (ab) ab.onclick = () => { S.calorieAdj += ci.adj; save(); toast('Targets adjusted'); render(); };
   const rb = $('#resetAdj'); if (rb) rb.onclick = () => { S.calorieAdj = 0; save(); render(); };
+  const um = $('#useMeasured'); if (um) um.onclick = () => { S.calorieAdj = mmAdj; save(); toast(`Targets now based on your measured ${mm.tdee} kcal maintenance`); render(); };
 }
 function planInsights(el) {
   const ds = lastDays(14), t = targetsFor(day), logged = ds.filter(d => (S.food[d] || []).length);
@@ -1171,6 +1225,7 @@ const swCheck = () => navigator.serviceWorker?.getRegistration().then(r => r?.up
 window.addEventListener('load', swCheck);
 /* "What's new": after an update, show the new version and what changed (once per version). */
 const WHATS_NEW = {
+  'shred12-v29': ['Trend weight: a smoothed line on your weight graph that ignores daily water swings', 'Measured maintenance: Plan works out your real calorie needs from your own food and weight logs', 'New PR alerts, plate calculator and warm-up sets for barbell lifts'],
   'shred12-v28': ['Food: clearer calorie ring with Protein / Carbs / Fat tiles and tidy meal cards', 'Train: photo header with your goal, progress and one-tap guided workout', 'Premium cards, buttons and tabs across the whole app'],
   'shred12-v26': ['Smoother Home: photos stay put and the card no longer jumps when you tap', 'Keyboard no longer shifts the screen while typing', 'Faster taps, lighter effects, and this update notice'],
 };

@@ -103,14 +103,53 @@ window.Sci = {
 
   e1rm(kg, reps) { return reps > 0 ? kg * (1 + reps / 30) : 0; }, // Epley
 
-  /* Weekly check-in rule: compare average weight of the last 7 days with the 7 before. */
+  /* Trend weight: exponentially smoothed scale weight (α = 0.1, as in The Hacker's Diet / Happy Scale),
+     so daily water and food swings don't hide the real direction. Missed days carry the trend forward.
+     Returns date -> trend kg for every day from the first weigh-in to `until`. */
+  trend(weights, until) {
+    const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date)), out = {};
+    if (!sorted.length) return out;
+    const byDate = Object.fromEntries(sorted.map(w => [w.date, w.kg]));
+    let t = sorted[0].kg;
+    const end = until || sorted[sorted.length - 1].date;
+    for (let k = sorted[0].date; k <= end; k = addDays(k, 1)) { // date helpers live in app.js
+      if (byDate[k] != null) t += 0.1 * (byDate[k] - t);
+      out[k] = t;
+    }
+    return out;
+  },
+
+  /* Least-squares line through weigh-ins: slope in kg/day, and at(date) for the fitted weight. */
+  fitLine(pts) {
+    const x = pts.map(w => daysBetween(pts[0].date, w.date)), mx = x.reduce((s, v) => s + v, 0) / x.length, my = pts.reduce((s, w) => s + w.kg, 0) / pts.length;
+    const slope = x.reduce((s, v, i) => s + (v - mx) * (pts[i].kg - my), 0) / x.reduce((s, v) => s + (v - mx) ** 2, 0);
+    return { slope, at: d => my + slope * (daysBetween(pts[0].date, d) - mx) };
+  },
+
+  /* Adaptive maintenance (energy balance, as MacroFactor does): intake − stored-energy change.
+     1 kg of tissue lost in a diet ≈ 7,700 kcal (Hall 2008). The rate of change is a least-squares slope over
+     the raw weigh-ins in the window, which has no lag (the smoothed trend lags a steady loss for its first weeks).
+     Needs ≥14 days of weigh-ins (≥7 of them) and ≥10 food-logged days. */
+  measuredTdee(weights, intakeByDate, end, days = 28) {
+    const start = addDays(end, 1 - days), pts = weights.filter(w => w.date >= start && w.date <= end);
+    if (pts.length < 7) return null;
+    const x = pts.map(w => daysBetween(start, w.date)), span = Math.max(...x) - Math.min(...x) + 1;
+    if (span < 14) return null;
+    const dates = Array.from({ length: days }, (_, i) => addDays(start, i)).filter(d => d >= pts.reduce((m, w) => w.date < m ? w.date : m, end));
+    const logged = dates.filter(d => intakeByDate[d] > 0);
+    if (logged.length < 10) return { need: 10 - logged.length, days: dates.length };
+    const intake = logged.reduce((s, d) => s + intakeByDate[d], 0) / logged.length;
+    const { slope } = this.fitLine(pts); // kg/day
+    return { tdee: Math.round((intake - slope * 7700) / 10) * 10, intake: Math.round(intake), days: dates.length, logged: logged.length, kgPerWeek: slope * 7 };
+  },
+
+  /* Weekly check-in rule: weekly rate of loss from a least-squares line through the last 14 days of weigh-ins. */
   checkIn(weights, p) {
     if (weights.length < 8) return { msg: 'Log your weight daily for 2 weeks to unlock automatic calorie adjustments.', adj: 0 };
-    const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
-    const last = sorted.slice(-7), prev = sorted.slice(-14, -7);
-    if (prev.length < 3) return { msg: 'Need one more week of weigh-ins for a trend comparison.', adj: 0 };
-    const avg = a => a.reduce((s, x) => s + x.kg, 0) / a.length;
-    const a1 = avg(last), a0 = avg(prev);
+    const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date)), end = sorted[sorted.length - 1].date;
+    const pts = sorted.filter(w => daysBetween(w.date, end) < 14);
+    if (pts.length < 6 || daysBetween(pts[0].date, end) < 10) return { msg: 'Need one more week of weigh-ins for a trend comparison.', adj: 0 };
+    const { slope, at } = this.fitLine(pts), a1 = at(end), a0 = a1 - slope * 7;
     const pct = ((a0 - a1) / a0) * 100;
     let adj = 0, msg;
     if (pct < p.rate * 0.5) { adj = -150; msg = `Weekly loss ${pct.toFixed(2)}% is below target ${p.rate}%. Cut ~150 kcal (from carbs/fat) or add 2,000 daily steps.`; }
